@@ -8,8 +8,8 @@ import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
-import { createBrowserClient } from "@/lib/supabase/client";
 import { calculateCostPerPortion } from "@/lib/recipes/cost-calculator";
+import { createRecipeVersion, updateRecipeVersionNotes } from "@/app/actions/recipes";
 import { Plus, Trash2, Save } from "lucide-react";
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -93,7 +93,6 @@ export function RecipeIngredients({
 
   const router   = useRouter();
   const { toast } = useToast();
-  const supabase = createBrowserClient();
 
   const itemOptions = inventoryItems.map((item) => ({
     value: item.id,
@@ -169,20 +168,17 @@ export function RecipeIngredients({
   async function saveNotesOnly() {
     if (!currentVersion) return;
     setSaving(true);
-    try {
-      const { error } = await supabase
-        .from("recipe_versions")
-        .update({ preparation_notes: notes || null })
-        .eq("id", currentVersion.id);
-
-      if (error) throw error;
-      toast("Notas guardadas", "success");
-      router.refresh();
-    } catch {
-      toast("Error al guardar las notas", "error");
-    } finally {
-      setSaving(false);
+    const result = await updateRecipeVersionNotes({
+      versionId: currentVersion.id,
+      notes: notes || null,
+    });
+    setSaving(false);
+    if (!result.ok) {
+      toast(result.error, "error");
+      return;
     }
+    toast("Notas guardadas", "success");
+    router.refresh();
   }
 
   // ── Ruta: nueva versión ─────────────────────────────────────────────────────
@@ -190,64 +186,29 @@ export function RecipeIngredients({
   async function saveNewVersion() {
     setConfirmOpen(false);
     setSaving(true);
-    try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      let actorId: string | null = null;
-      if (authUser) {
-        const { data: userRecord } = await supabase
-          .from("users")
-          .select("id")
-          .eq("auth_id", authUser.id)
-          .single();
-        actorId = userRecord?.id ?? null;
-      }
-
-      // 1. Desmarcar versión actual
-      if (currentVersion) {
-        await supabase
-          .from("recipe_versions")
-          .update({ is_current: false })
-          .eq("id", currentVersion.id);
-      }
-
-      // 2. Crear nueva versión con costo calculado
-      const { data: newVersion, error: vErr } = await supabase
-        .from("recipe_versions")
-        .insert({
-          recipe_id:         recipeId,
-          version:           nextVersion,
-          portions_yield:    portionsYield,
-          preparation_notes: notes || null,
-          cost_per_portion:  Math.round(costPerPortion * 100) / 100,
-          is_current:        true,
-          created_by:        actorId,
-        })
-        .select()
-        .single();
-
-      if (vErr || !newVersion) throw vErr;
-
-      // 3. Insertar ingredientes
-      if (ingredients.length > 0) {
-        await supabase.from("recipe_ingredients").insert(
-          ingredients.map((ing) => ({
-            recipe_version_id:  newVersion.id,
-            inventory_item_id:  ing.inventoryItemId,
-            quantity:           ing.quantity,
-            unit:               ing.unit,
-            substitute_item_id: ing.substituteItemId || null,
-          }))
-        );
-      }
-
-      toast(`Versión ${nextVersion} creada — costo/porción: $${costPerPortion.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`, "success");
-      router.refresh();
-    } catch (err) {
-      console.error("Error creando versión:", err);
-      toast("Error al guardar la nueva versión", "error");
-    } finally {
-      setSaving(false);
+    const result = await createRecipeVersion({
+      recipeId,
+      currentVersionId: currentVersion?.id ?? null,
+      version: nextVersion,
+      portionsYield,
+      notes: notes || null,
+      ingredients: ingredients.map((ing) => ({
+        inventoryItemId: ing.inventoryItemId,
+        quantity: ing.quantity,
+        unit: ing.unit,
+        substituteItemId: ing.substituteItemId ?? null,
+      })),
+    });
+    setSaving(false);
+    if (!result.ok) {
+      toast(result.error, "error");
+      return;
     }
+    toast(
+      `Versión ${nextVersion} creada — costo/porción: $${costPerPortion.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
+      "success"
+    );
+    router.refresh();
   }
 
   return (
