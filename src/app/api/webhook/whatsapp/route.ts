@@ -39,11 +39,9 @@ export async function POST(request: NextRequest) {
   try {
     const bodyText = await request.text();
 
-    // Validar firma de Twilio (skip en desarrollo)
-    if (process.env.NODE_ENV === 'production') {
-      if (!validateTwilioSignature(request, bodyText)) {
-        return new NextResponse('Forbidden', { status: 403 });
-      }
+    // Validar firma de Twilio (siempre, en todos los entornos)
+    if (!validateTwilioSignature(request, bodyText)) {
+      return new NextResponse('Forbidden', { status: 403 });
     }
 
     // Parsear el body URL-encoded
@@ -173,15 +171,19 @@ export async function POST(request: NextRequest) {
               });
 
             if (!uploadError) {
-              const { data: urlData } = supabase.storage
+              const { data: urlData, error: signErr } = await supabase.storage
                 .from('order-files')
-                .getPublicUrl(storagePath);
-              originalFileUrl = urlData.publicUrl;
+                .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
 
-              await supabase
-                .from('orders')
-                .update({ original_file_url: originalFileUrl })
-                .eq('id', order.id);
+              if (signErr) {
+                console.error('Error firmando URL:', signErr);
+              } else {
+                originalFileUrl = urlData.signedUrl;
+                await supabase
+                  .from('orders')
+                  .update({ original_file_url: originalFileUrl })
+                  .eq('id', order.id);
+              }
             } else {
               console.error('Error subiendo Excel a Storage:', uploadError);
             }
