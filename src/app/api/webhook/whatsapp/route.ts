@@ -178,13 +178,11 @@ async function processExcelBackground(phone: string, mediaUrl: string) {
     await sendWhatsAppMessage(phone, summary);
     console.log('EXCEL: summary sent');
   } catch (error) {
-    const e = error instanceof Error ? error : new Error(String(error));
-    console.error('STEP FAILED (PROCESS_EXCEL background):', JSON.stringify({ message: e.message, stack: e.stack, name: e.name }));
+    const errorDetail = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : '';
+    console.error('EXCEL PROCESS FAILED:', errorDetail, errorStack);
     try {
-      await sendWhatsAppMessage(
-        phone,
-        '❌ Hubo un error al procesar tu archivo. Intentá de nuevo o contactá a Sheina.'
-      );
+      await sendWhatsAppMessage(phone, `❌ Error procesando Excel: ${errorDetail.substring(0, 200)}`);
     } catch {
       // ignorar error al enviar el mensaje de error
     }
