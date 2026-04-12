@@ -62,20 +62,35 @@ export function processIncomingMessage(body: TwilioWebhookBody): IncomingMessage
 }
 
 /**
+ * Normaliza un teléfono a formato E.164 estricto (+<digits>).
+ * Rechaza entradas inválidas devolviendo null para evitar matches laxos.
+ */
+export function normalizeToE164(raw: string): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim().replace(/^whatsapp:/i, '');
+  // Solo permitimos + seguido de 8-15 dígitos (E.164).
+  const digits = trimmed.replace(/[^\d+]/g, '');
+  const match = /^\+?(\d{8,15})$/.exec(digits);
+  if (!match) return null;
+  return `+${match[1]}`;
+}
+
+/**
  * Identifica al cliente por su número de teléfono.
+ * Usa match exacto sobre E.164 normalizado — nunca sufijos ni ilike.
  */
 export async function identifyClient(phone: string) {
-  const supabase = await createSupabaseAdmin();
+  const normalized = normalizeToE164(phone);
+  if (!normalized) return null;
 
-  // Buscar usuario por teléfono (normalizar formato)
-  const cleanPhone = phone.replace(/\D/g, '');
+  const supabase = await createSupabaseAdmin();
   const { data: user } = await supabase
     .from('users')
     .select('*, organization:organizations(*)')
-    .or(`phone.eq.${phone},phone.eq.+${cleanPhone},phone.ilike.%${cleanPhone.slice(-10)}`)
+    .eq('phone', normalized)
     .eq('is_active', true)
     .limit(1)
-    .single();
+    .maybeSingle();
 
   return user;
 }
