@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import { createBrowserClient } from "@/lib/supabase/client";
+import { transitionOrderStatus } from "@/app/actions/orders";
 import type { OrderStatus } from "@/lib/types/database";
 
 const QUICK_ACTIONS: Partial<Record<OrderStatus, { label: string; next: OrderStatus }>> = {
@@ -23,28 +23,25 @@ export function QuickActionButton({
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
-  const supabase = createBrowserClient();
 
   if (!action) return null;
 
   async function handleClick(e: React.MouseEvent) {
-    e.stopPropagation(); // no navegar al detalle
+    e.stopPropagation();
     e.preventDefault();
     setLoading(true);
-    try {
-      const updateData: Record<string, unknown> = { status: action!.next };
-      if (action!.next === "confirmed") updateData.confirmed_at = new Date().toISOString();
+    const result = await transitionOrderStatus({
+      orderId,
+      newStatus: action!.next,
+    });
+    setLoading(false);
 
-      const { error } = await supabase.from("orders").update(updateData).eq("id", orderId);
-      if (error) throw error;
-
-      toast(`Pedido actualizado: ${action!.label}`, "success");
-      router.refresh();
-    } catch {
-      toast("Error al actualizar el pedido", "error");
-    } finally {
-      setLoading(false);
+    if (!result.ok) {
+      toast(result.error, "error");
+      return;
     }
+    toast(`Pedido actualizado: ${action!.label}`, "success");
+    router.refresh();
   }
 
   return (

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
-import { createBrowserClient } from "@/lib/supabase/client";
+import { updateOrderLines } from "@/app/actions/orders";
 import { DAY_NAMES } from "@/lib/types/orders";
 import { Save, AlertTriangle } from "lucide-react";
 
@@ -58,7 +58,6 @@ export function OrderLinesEditor({
   const [dirty, setDirty] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
-  const supabase = createBrowserClient();
 
   function handleChange(lineId: string, value: number) {
     setQuantities((prev) => ({ ...prev, [lineId]: Math.max(0, value) }));
@@ -70,60 +69,33 @@ export function OrderLinesEditor({
       toast("Debés ingresar un motivo para modificaciones post-corte.", "warning");
       return;
     }
-    setSaving(true);
-    try {
-      // Detectar líneas que cambiaron
-      const changedLines = lines.filter((l) => quantities[l.id] !== l.quantity);
-      if (changedLines.length === 0) {
-        toast("No hay cambios para guardar.", "info");
-        setSaving(false);
-        setDirty(false);
-        return;
-      }
 
-      // Actualizar cada línea que cambió
-      for (const line of changedLines) {
-        const { error } = await supabase
-          .from("order_lines")
-          .update({ quantity: quantities[line.id] })
-          .eq("id", line.id);
-        if (error) throw error;
-      }
-
-      // Recalcular total_units del pedido
-      const newTotal = Object.values(quantities).reduce((a, b) => a + b, 0);
-      await supabase.from("orders").update({ total_units: newTotal }).eq("id", orderId);
-
-      // Crear evento de auditoría
-      const { data: { user } } = await supabase.auth.getUser();
-      await supabase.from("order_events").insert({
-        order_id: orderId,
-        event_type: isPostCutoff ? "override" : "line_modified",
-        actor_id: user?.id ?? null,
-        actor_role: "admin",
-        is_post_cutoff: isPostCutoff,
-        payload: {
-          changed_lines: changedLines.map((l) => ({
-            id: l.id,
-            option_code: l.option_code,
-            department: l.department,
-            old_qty: l.quantity,
-            new_qty: quantities[l.id],
-          })),
-          ...(isPostCutoff ? { reason } : {}),
-        },
-      });
-
-      toast("Cambios guardados.", "success");
+    const changedLines = lines.filter((l) => quantities[l.id] !== l.quantity);
+    if (changedLines.length === 0) {
+      toast("No hay cambios para guardar.", "info");
       setDirty(false);
-      setReason("");
-      router.refresh();
-    } catch (err) {
-      console.error("Error guardando cambios:", err);
-      toast("Error al guardar los cambios.", "error");
-    } finally {
-      setSaving(false);
+      return;
     }
+
+    setSaving(true);
+    const result = await updateOrderLines({
+      orderId,
+      changes: changedLines.map((l) => ({
+        lineId: l.id,
+        quantity: quantities[l.id],
+      })),
+      reason: reason || undefined,
+    });
+    setSaving(false);
+
+    if (!result.ok) {
+      toast(result.error, "error");
+      return;
+    }
+    toast("Cambios guardados.", "success");
+    setDirty(false);
+    setReason("");
+    router.refresh();
   }
 
   // Agrupar líneas por día → opción para renderizar la tabla

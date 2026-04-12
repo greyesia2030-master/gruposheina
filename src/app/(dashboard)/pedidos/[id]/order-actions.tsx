@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import { createBrowserClient } from "@/lib/supabase/client";
+import { transitionOrderStatus } from "@/app/actions/orders";
 import type { OrderStatus } from "@/lib/types/database";
 
 interface ActionConfig {
@@ -29,13 +29,6 @@ const ACTIONS: Partial<Record<OrderStatus, ActionConfig[]>> = {
   ],
 };
 
-const EVENT_TYPE: Partial<Record<OrderStatus, string>> = {
-  confirmed:     "confirmed",
-  cancelled:     "cancelled",
-  delivered:     "delivered",
-  in_production: "confirmed",
-};
-
 interface OrderActionsProps {
   orderId: string;
   status: OrderStatus;
@@ -46,7 +39,6 @@ export function OrderActions({ orderId, status, isWithinCutoff }: OrderActionsPr
   const [loading, setLoading] = useState<OrderStatus | null>(null);
   const router  = useRouter();
   const { toast } = useToast();
-  const supabase = createBrowserClient();
 
   const allActions = ACTIONS[status] ?? [];
   // Filtrar acciones que requieren corte cuando ya pasó
@@ -58,46 +50,18 @@ export function OrderActions({ orderId, status, isWithinCutoff }: OrderActionsPr
 
   async function handleAction(action: ActionConfig) {
     setLoading(action.newStatus);
-    try {
-      // Obtener el registro de users (no el auth.user) para el actor_id correcto
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      let actorId: string | null = null;
-      if (authUser) {
-        const { data: userRecord } = await supabase
-          .from("users")
-          .select("id")
-          .eq("auth_id", authUser.id)
-          .single();
-        actorId = userRecord?.id ?? null;
-      }
+    const result = await transitionOrderStatus({
+      orderId,
+      newStatus: action.newStatus,
+    });
+    setLoading(null);
 
-      const updateData: Record<string, unknown> = { status: action.newStatus };
-      if (action.newStatus === "confirmed") {
-        updateData.confirmed_at = new Date().toISOString();
-        if (actorId) updateData.confirmed_by = actorId;
-      }
-
-      const { error } = await supabase.from("orders").update(updateData).eq("id", orderId);
-      if (error) throw error;
-
-      // Auditoría
-      await supabase.from("order_events").insert({
-        order_id:      orderId,
-        event_type:    EVENT_TYPE[action.newStatus] ?? "confirmed",
-        actor_id:      actorId,
-        actor_role:    "admin",
-        is_post_cutoff: !isWithinCutoff,
-        payload:       { newStatus: action.newStatus },
-      });
-
-      toast(`Pedido actualizado: ${action.label}`, "success");
-      router.refresh();
-    } catch (err) {
-      console.error("Error actualizando pedido:", err);
-      toast("Error al actualizar el pedido", "error");
-    } finally {
-      setLoading(null);
+    if (!result.ok) {
+      toast(result.error, "error");
+      return;
     }
+    toast(`Pedido actualizado: ${action.label}`, "success");
+    router.refresh();
   }
 
   return (
