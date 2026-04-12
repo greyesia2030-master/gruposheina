@@ -1,6 +1,7 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
-    "src/app/api/webhook/whatsapp/route.ts": {
+    "app/api/webhook/whatsapp/route.ts": {
       "maxDuration": 60
     }
   }
