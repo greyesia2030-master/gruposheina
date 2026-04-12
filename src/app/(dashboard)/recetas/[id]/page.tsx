@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { CATEGORY_LABELS } from "@/lib/types/menus";
 import { RecipeIngredients } from "./recipe-ingredients";
+import { formatART } from "@/lib/utils/timezone";
 
 export default async function RecetaDetailPage({
   params,
@@ -129,9 +130,7 @@ export default async function RecetaDetailPage({
                         </td>
                         <td className="px-4 py-3 text-text-secondary">{creator?.full_name ?? "—"}</td>
                         <td className="px-4 py-3 text-text-secondary">
-                          {new Date(v.created_at).toLocaleDateString("es-AR", {
-                            day: "2-digit", month: "short", year: "numeric",
-                          })}
+                          {formatART(v.created_at, "dd MMM yyyy")}
                         </td>
                         <td className="px-4 py-3">
                           {v.is_current && <Badge variant="success">Actual</Badge>}

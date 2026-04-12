@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { formatART } from "@/lib/utils/timezone";
 import {
   Plus,
   Check,
@@ -74,12 +75,7 @@ export function OrderTimeline({ events }: { events: TimelineEvent[] }) {
                   </div>
                   <p className="text-xs text-text-secondary">
                     {event.actor?.full_name ?? event.actor_role} — {" "}
-                    {new Date(event.created_at).toLocaleDateString("es-AR", {
-                      day: "2-digit",
-                      month: "short",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {formatART(event.created_at, "dd MMM HH:mm")}
                   </p>
                   {event.payload && "reason" in event.payload && event.payload.reason ? (
                     <p className="mt-1 text-xs text-text-secondary italic">

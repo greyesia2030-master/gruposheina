@@ -3,8 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
-import { getISOWeek, addDays } from "date-fns";
-import type { WeeklyMenu, MenuItem, MenuStatus, MenuCategory } from "@/lib/types/database";
+import type { WeeklyMenu, MenuItem, MenuStatus } from "@/lib/types/database";
 
 // ── useMenus: lista de menús con filtros opcionales ───────────────────────────
 
@@ -99,58 +98,6 @@ export function useMenu(menuId: string) {
   }, [supabase, menuId, menu]);
 
   return { menu, items, loading, updateMenuItem, deleteMenuItem, publishMenu, reload: load };
-}
-
-// ── createMenu ────────────────────────────────────────────────────────────────
-
-export async function createMenu(
-  weekStart: string,
-  supabase: ReturnType<typeof createBrowserClient>
-) {
-  const start = new Date(weekStart + "T00:00:00");
-  const end = addDays(start, 4);
-  const weekNumber = getISOWeek(start);
-
-  return supabase
-    .from("weekly_menus")
-    .insert({
-      week_start: weekStart,
-      week_end: end.toISOString().slice(0, 10),
-      week_number: weekNumber,
-      status: "draft" as MenuStatus,
-    })
-    .select()
-    .single();
-}
-
-// ── duplicateMenu ─────────────────────────────────────────────────────────────
-
-export async function duplicateMenu(
-  sourceMenuId: string,
-  newWeekStart: string,
-  supabase: ReturnType<typeof createBrowserClient>
-) {
-  // 1. Crear nuevo menú
-  const { data: newMenu, error: menuError } = await createMenu(newWeekStart, supabase);
-  if (menuError || !newMenu) return { data: null, error: menuError };
-
-  // 2. Cargar items del menú origen
-  const { data: sourceItems, error: itemsError } = await supabase
-    .from("menu_items")
-    .select("day_of_week, option_code, recipe_version_id, category, display_name, is_available")
-    .eq("menu_id", sourceMenuId);
-
-  if (itemsError) return { data: null, error: itemsError };
-
-  // 3. Insertar items en el nuevo menú
-  if (sourceItems && sourceItems.length > 0) {
-    const { error: insertError } = await supabase.from("menu_items").insert(
-      sourceItems.map((item) => ({ ...item, menu_id: newMenu.id }))
-    );
-    if (insertError) return { data: null, error: insertError };
-  }
-
-  return { data: newMenu, error: null };
 }
 
 // ── Helpers de códigos de opción ──────────────────────────────────────────────

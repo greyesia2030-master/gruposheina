@@ -209,12 +209,24 @@ export async function updateMenuItemField(
   }
 
   const supabase = await createSupabaseAdmin();
+
+  const { data: existing } = await supabase
+    .from("menu_items")
+    .select("menu_id")
+    .eq("id", itemId)
+    .single();
+
+  if (!existing) return fail("Opción no encontrada");
+
   const { error } = await supabase
     .from("menu_items")
     .update({ [field]: value })
     .eq("id", itemId);
 
   if (error) return fail("Error al guardar");
+
+  revalidatePath(`/menus/${existing.menu_id}`);
+  revalidatePath("/menus");
   return ok(undefined);
 }
 

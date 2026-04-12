@@ -18,6 +18,7 @@ import {
   Phone,
 } from "lucide-react";
 import type { OrderStatus } from "@/lib/types/database";
+import { formatART } from "@/lib/utils/timezone";
 
 const SOURCE_ICONS: Record<string, React.ReactNode> = {
   whatsapp_excel: <MessageSquare className="h-4 w-4 text-green-600" />,
@@ -148,12 +149,7 @@ export default async function PedidoDetailPage({
                 <span className="text-sm">{SOURCE_LABELS[order.source] ?? order.source}</span>
               </div>
               <p className="text-xs text-text-secondary">
-                {new Date(order.created_at).toLocaleDateString("es-AR", {
-                  day: "2-digit",
-                  month: "short",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
+                {formatART(order.created_at, "dd MMM HH:mm")}
               </p>
             </div>
           </div>

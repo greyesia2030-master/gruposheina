@@ -9,6 +9,7 @@ import { EditItemForm } from "./edit-item-form";
 import { DeactivateItemButton } from "./deactivate-item-button";
 import { AlertTriangle } from "lucide-react";
 import type { InventoryItem, InventoryMovement } from "@/lib/types/database";
+import { formatART } from "@/lib/utils/timezone";
 
 const MOVEMENT_BADGE_VARIANT: Record<
   string,
@@ -178,12 +179,7 @@ export default async function InventarioDetailPage({
                       className="border-b border-border last:border-0"
                     >
                       <td className="px-4 py-3 text-text-secondary">
-                        {new Date(mov.created_at).toLocaleDateString("es-AR", {
-                          day:    "2-digit",
-                          month:  "short",
-                          hour:   "2-digit",
-                          minute: "2-digit",
-                        })}
+                        {formatART(mov.created_at, "dd MMM HH:mm")}
                       </td>
                       <td className="px-4 py-3">
                         <Badge

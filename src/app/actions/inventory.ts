@@ -108,7 +108,7 @@ export async function createItem(
       name: data.name,
       category: data.category,
       unit: data.unit,
-      current_stock: data.currentStock,
+      current_stock: 0,
       min_stock: data.minStock,
       cost_per_unit: data.costPerUnit,
       supplier: data.supplier?.trim() || null,
@@ -121,21 +121,20 @@ export async function createItem(
     return fail("Error al crear insumo");
   }
 
-  // Movimiento inicial si hay stock — usamos fn_update_stock para mantener
-  // consistencia atómica con el resto de movimientos.
   if (data.currentStock > 0) {
-    // El insert ya dejó current_stock = data.currentStock, pero registramos
-    // el movimiento histórico sin volver a sumar. Para eso insertamos
-    // directamente en inventory_movements con stock_after explícito.
-    await supabase.from("inventory_movements").insert({
-      item_id: newItem.id,
-      movement_type: "adjustment_pos",
-      quantity: data.currentStock,
-      unit_cost: data.costPerUnit,
-      reason: "Stock inicial",
-      actor_id: auth.user.id,
-      stock_after: data.currentStock,
+    const { error: rpcErr } = await supabase.rpc("fn_update_stock", {
+      p_item_id: newItem.id,
+      p_qty: data.currentStock,
+      p_movement_type: "adjustment_pos",
+      p_reason: "Stock inicial",
+      p_actor_id: auth.user.id,
+      p_unit_cost: data.costPerUnit,
+      p_reference_type: null,
+      p_reference_id: null,
     });
+    if (rpcErr) {
+      return fail(rpcErr.message || "Error al registrar stock inicial");
+    }
   }
 
   revalidatePath("/inventario");

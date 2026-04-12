@@ -1,4 +1,6 @@
-import { subDays, setHours, setMinutes, isBefore } from 'date-fns';
+import { subDays } from "date-fns";
+import { fromZonedTime } from "date-fns-tz";
+import { ART_TZ } from "@/lib/utils/timezone";
 
 interface OrderForCutoff {
   menu_id: string | null;
@@ -18,22 +20,30 @@ interface OrgForCutoff {
  * Dentro de corte = el cliente puede modificar libremente.
  *
  * Fórmula: cutoff_datetime = week_start - cutoff_days_before días, a las cutoff_time
- * Si now() < cutoff_datetime → dentro de corte (true)
+ * interpretadas en zona horaria de Buenos Aires. Si UTC now() < cutoff → dentro.
  */
 export function isWithinCutoff(
   order: OrderForCutoff,
   menu: MenuForCutoff | null,
   organization: OrgForCutoff
 ): boolean {
-  // Sin menú vinculado → considerar dentro de corte
   if (!order.menu_id || !menu) return true;
 
-  const weekStart = new Date(menu.week_start);
-  const [hours, minutes] = organization.cutoff_time.split(':').map(Number);
+  const [hStr, mStr] = organization.cutoff_time.split(":");
+  const hours = Number(hStr) || 0;
+  const minutes = Number(mStr) || 0;
 
-  // Calcular datetime de corte
-  const cutoffDate = subDays(weekStart, organization.cutoff_days_before);
-  const cutoffDateTime = setMinutes(setHours(cutoffDate, hours), minutes);
+  // week_start llega como 'YYYY-MM-DD'. Restamos los días sobre un Date UTC
+  // a mediodía para evitar que DST desplace el día calendario, y luego
+  // construimos el datetime "YYYY-MM-DD HH:mm:ss" que interpretamos en ART.
+  const base = new Date(menu.week_start + "T12:00:00Z");
+  const shifted = subDays(base, organization.cutoff_days_before);
+  const yyyy = shifted.getUTCFullYear();
+  const mm = String(shifted.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(shifted.getUTCDate()).padStart(2, "0");
+  const hh = String(hours).padStart(2, "0");
+  const mi = String(minutes).padStart(2, "0");
 
-  return isBefore(new Date(), cutoffDateTime);
+  const cutoffUtc = fromZonedTime(`${yyyy}-${mm}-${dd} ${hh}:${mi}:00`, ART_TZ);
+  return Date.now() < cutoffUtc.getTime();
 }

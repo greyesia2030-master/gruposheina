@@ -8,6 +8,7 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 import { QuickActionButton } from "./quick-action-button";
 import type { OrderStatus } from "@/lib/types/database";
 import { MessageSquare, Globe, Phone } from "lucide-react";
+import { formatART } from "@/lib/utils/timezone";
 
 const SOURCE_ICONS: Record<string, React.ReactNode> = {
   whatsapp_excel: <span title="WhatsApp Excel"><MessageSquare className="h-4 w-4 text-green-600" /></span>,
@@ -116,11 +117,7 @@ export default async function PedidosPage({
                         </span>
                       </td>
                       <td className="px-4 py-3 text-text-secondary">
-                        {new Date(order.created_at).toLocaleDateString("es-AR", {
-                          day: "2-digit",
-                          month: "2-digit",
-                          year: "2-digit",
-                        })}
+                        {formatART(order.created_at, "dd/MM/yy")}
                       </td>
                       <td className="px-4 py-3">
                         <QuickActionButton

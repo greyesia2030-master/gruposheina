@@ -4,6 +4,7 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 import { Badge } from "@/components/ui/badge";
 import { MENU_STATUS_LABELS } from "@/lib/types/menus";
 import { MenuEditor } from "./menu-editor";
+import { formatART } from "@/lib/utils/timezone";
 
 export default async function MenuDetailPage({
   params,
@@ -51,13 +52,7 @@ export default async function MenuDetailPage({
 
   const statusVariant =
     menu.status === "published" ? "success" : menu.status === "archived" ? "warning" : "default";
-  const weekRange = `${new Date(menu.week_start).toLocaleDateString("es-AR", {
-    day: "2-digit",
-    month: "short",
-  })} — ${new Date(menu.week_end).toLocaleDateString("es-AR", {
-    day: "2-digit",
-    month: "short",
-  })}`;
+  const weekRange = `${formatART(menu.week_start + "T12:00:00Z", "dd MMM")} — ${formatART(menu.week_end + "T12:00:00Z", "dd MMM")}`;
 
   return (
     <div>

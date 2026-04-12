@@ -9,6 +9,7 @@ import { MENU_STATUS_LABELS } from "@/lib/types/menus";
 import { CreateMenuButton } from "./create-menu-button";
 import { DuplicateMenuButton } from "./duplicate-menu-button";
 import type { MenuStatus } from "@/lib/types/database";
+import { formatART } from "@/lib/utils/timezone";
 
 const STATUS_VARIANT: Record<MenuStatus, "default" | "success" | "warning"> = {
   draft:     "default",
@@ -17,11 +18,10 @@ const STATUS_VARIANT: Record<MenuStatus, "default" | "success" | "warning"> = {
 };
 
 function formatWeekRange(weekStart: string, weekEnd: string) {
-  const opts: Intl.DateTimeFormatOptions = { day: "2-digit", month: "short" };
   return (
-    new Date(weekStart + "T00:00:00").toLocaleDateString("es-AR", opts) +
+    formatART(weekStart + "T12:00:00Z", "dd MMM") +
     " — " +
-    new Date(weekEnd + "T00:00:00").toLocaleDateString("es-AR", opts)
+    formatART(weekEnd + "T12:00:00Z", "dd MMM")
   );
 }
 

@@ -79,10 +79,18 @@ export async function transitionOrderStatus(
 
       const menuRow = (order.menu as unknown as { week_start: string }[] | null)?.[0] ?? null;
       if (org && !isWithinCutoff(order, menuRow, org)) {
-        // Fuera de corte — los administradores (auth.user.role) pueden
-        // forzarlo, pero igualmente registramos el evento como override.
-        // requireAdmin ya garantizó que es admin/operator, así que permitimos
-        // pero lo marcamos post-cutoff vía el payload del evento.
+        await createOrderEvent({
+          orderId: data.orderId,
+          eventType: "override",
+          actorId: auth.user.id,
+          actorRole: "admin",
+          isPostCutoff: true,
+          payload: {
+            reason: data.reason ?? null,
+            from_status: order.status,
+            to_status: "cancelled",
+          },
+        });
       }
     }
   }
