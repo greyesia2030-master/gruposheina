@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
   try {
     const bodyText = await request.text();
 
-    // Log de entrada detallado
+    // STEP 1 — body parsed
     const _p = new URLSearchParams(bodyText);
     const incomingFrom = _p.get('From') ?? '';
     const incomingBody = _p.get('Body') ?? '';
@@ -52,8 +52,9 @@ export async function POST(request: NextRequest) {
       mediaType: incomingMediaType,
       hasMedia: incomingNumMedia !== '0',
     }));
+    console.log('STEP 1: body parsed');
 
-    // Log pre-validación de firma
+    // STEP 2 — signature check
     const hasSignature = !!request.headers.get('x-twilio-signature');
     const hasAuthToken = !!process.env.TWILIO_AUTH_TOKEN;
     console.log('WEBHOOK SIGNATURE CHECK:', JSON.stringify({
@@ -63,7 +64,6 @@ export async function POST(request: NextRequest) {
       signatureValue: request.headers.get('x-twilio-signature')?.slice(0, 20) + '...',
     }));
 
-    // Validar firma de Twilio (siempre, en todos los entornos)
     if (!validateTwilioSignature(request, bodyText)) {
       console.error('WEBHOOK SIGNATURE FAILED:', JSON.stringify({
         reason: !hasSignature ? 'missing x-twilio-signature header' : !hasAuthToken ? 'missing TWILIO_AUTH_TOKEN env var' : 'signature mismatch',
@@ -73,8 +73,9 @@ export async function POST(request: NextRequest) {
       }));
       return new NextResponse('Forbidden', { status: 403 });
     }
+    console.log('STEP 2: signature validated');
 
-    // Parsear el body URL-encoded
+    // STEP 3 — parse message and determine action
     const params = new URLSearchParams(bodyText);
     const webhookBody = {
       From: params.get('From') ?? '',
@@ -85,12 +86,16 @@ export async function POST(request: NextRequest) {
     };
 
     const message = processIncomingMessage(webhookBody);
+    console.log('STEP 3: message type =', message.action, '| phone =', message.phone);
+
     const supabase = await createSupabaseAdmin();
 
     switch (message.action) {
       case 'PROCESS_EXCEL': {
         // Enviar confirmación inmediata (respetar timeout de 15s de Twilio)
+        console.log('STEP 5: sending reply (PROCESS_EXCEL ack) to', message.phone);
         await sendWhatsAppMessage(message.phone, '📥 Recibí tu archivo. Estoy procesándolo...');
+        console.log('STEP 6: reply sent (PROCESS_EXCEL ack)');
 
         try {
           // Descargar archivo desde Twilio
@@ -118,6 +123,7 @@ export async function POST(request: NextRequest) {
 
           // Identificar cliente
           const client = await identifyClient(message.phone);
+          console.log('STEP 4 (EXCEL): client =', client?.id ?? 'NOT FOUND');
           if (!client || !client.organization_id) {
             await sendWhatsAppMessage(
               message.phone,
@@ -126,14 +132,10 @@ export async function POST(request: NextRequest) {
             break;
           }
 
-          // Buscar el menú semanal publicado que corresponda al week_label
-          // El weekLabel tiene formato "Semana del DD al DD de mes" o similar;
-          // se busca por la primera fecha del rango de días parseados.
+          // Buscar el menú semanal publicado
           const firstDay = validatedData.days[0];
           let menuId: string | null = null;
           if (firstDay) {
-            // Derivar una fecha aproximada desde el weekLabel usando el día actual como ancla
-            // La búsqueda amplia por published es suficiente — se toma el más reciente
             const { data: matchingMenu } = await supabase
               .from('weekly_menus')
               .select('id, week_start, week_end')
@@ -142,7 +144,6 @@ export async function POST(request: NextRequest) {
               .limit(5);
 
             if (matchingMenu && matchingMenu.length > 0) {
-              // Preferir el menú cuyo week_label coincida textualmente o esté vigente
               const today = new Date().toISOString().slice(0, 10);
               const current = matchingMenu.find(
                 (m) => m.week_start <= today && m.week_end >= today
@@ -218,7 +219,6 @@ export async function POST(request: NextRequest) {
               console.error('Error subiendo Excel a Storage:', uploadError);
             }
           } catch (storageErr) {
-            // No interrumpir el flujo si falla el upload
             console.error('Error en Storage upload:', storageErr);
           }
 
@@ -233,10 +233,12 @@ export async function POST(request: NextRequest) {
 
           // Enviar resumen
           const summary = formatOrderSummary(validatedData);
+          console.log('STEP 5: sending summary to', message.phone);
           await sendWhatsAppMessage(message.phone, summary);
+          console.log('STEP 6: summary sent');
         } catch (error) {
           const e = error instanceof Error ? error : new Error(String(error));
-          console.error('WEBHOOK ERROR PROCESS_EXCEL:', JSON.stringify({ message: e.message, stack: e.stack, name: e.name }));
+          console.error('STEP FAILED (PROCESS_EXCEL):', JSON.stringify({ message: e.message, stack: e.stack, name: e.name }));
           await sendWhatsAppMessage(
             message.phone,
             '❌ Hubo un error al procesar tu archivo. Intentá de nuevo o contactá a Sheina.'
@@ -248,12 +250,14 @@ export async function POST(request: NextRequest) {
       case 'CONFIRM_ORDER': {
         try {
           const client = await identifyClient(message.phone);
+          console.log('STEP 4 (CONFIRM): client =', client?.id ?? 'NOT FOUND');
           if (!client) {
+            console.log('STEP 5: sending not-registered reply');
             await sendWhatsAppMessage(message.phone, '⚠️ No encontré tu cuenta asociada a este número. Contactá a Sheina para registrarte.');
+            console.log('STEP 6: not-registered reply sent');
             break;
           }
 
-          // Buscar último pedido draft del cliente
           const { data: order } = await supabase
             .from('orders')
             .select('*')
@@ -264,7 +268,9 @@ export async function POST(request: NextRequest) {
             .single();
 
           if (!order) {
+            console.log('STEP 5: sending no-draft-order reply');
             await sendWhatsAppMessage(message.phone, 'No encontré un pedido pendiente de confirmación.');
+            console.log('STEP 6: no-draft-order reply sent');
             break;
           }
 
@@ -284,13 +290,15 @@ export async function POST(request: NextRequest) {
             actorRole: 'client',
           });
 
+          console.log('STEP 5: sending confirmed reply to', message.phone);
           await sendWhatsAppMessage(
             message.phone,
             `✅ ¡Pedido confirmado!\nTotal: ${order.total_units} viandas — ${order.week_label}\n\nSi necesitás hacer cambios antes del corte, enviá un nuevo Excel.`
           );
+          console.log('STEP 6: confirmed reply sent');
         } catch (err) {
           const e = err instanceof Error ? err : new Error(String(err));
-          console.error('WEBHOOK ERROR CONFIRM_ORDER:', JSON.stringify({ message: e.message, stack: e.stack, name: e.name }));
+          console.error('STEP FAILED (CONFIRM_ORDER):', JSON.stringify({ message: e.message, stack: e.stack, name: e.name }));
         }
         break;
       }
@@ -298,12 +306,14 @@ export async function POST(request: NextRequest) {
       case 'CANCEL_ORDER': {
         try {
           const client = await identifyClient(message.phone);
+          console.log('STEP 4 (CANCEL): client =', client?.id ?? 'NOT FOUND');
           if (!client) {
+            console.log('STEP 5: sending not-registered reply');
             await sendWhatsAppMessage(message.phone, '⚠️ No encontré tu cuenta asociada a este número. Contactá a Sheina para registrarte.');
+            console.log('STEP 6: not-registered reply sent');
             break;
           }
 
-          // Buscar último pedido draft o confirmed
           const { data: order } = await supabase
             .from('orders')
             .select('*, menu:weekly_menus(*)')
@@ -314,11 +324,12 @@ export async function POST(request: NextRequest) {
             .single();
 
           if (!order) {
+            console.log('STEP 5: sending no-active-order reply');
             await sendWhatsAppMessage(message.phone, 'No encontré un pedido activo para cancelar.');
+            console.log('STEP 6: no-active-order reply sent');
             break;
           }
 
-          // Si está confirmado, verificar ventana de corte
           if (order.status === 'confirmed') {
             const { data: org } = await supabase
               .from('organizations')
@@ -327,10 +338,12 @@ export async function POST(request: NextRequest) {
               .single();
 
             if (org && !isWithinCutoff(order, order.menu, org)) {
+              console.log('STEP 5: sending post-cutoff reply');
               await sendWhatsAppMessage(
                 message.phone,
                 '⚠️ Ya pasó el horario de corte. Contactá a Sheina para modificar tu pedido.'
               );
+              console.log('STEP 6: post-cutoff reply sent');
               break;
             }
           }
@@ -347,13 +360,15 @@ export async function POST(request: NextRequest) {
             actorRole: 'client',
           });
 
+          console.log('STEP 5: sending cancelled reply to', message.phone);
           await sendWhatsAppMessage(
             message.phone,
             `🚫 Pedido cancelado — ${order.week_label}\n\nSi querés hacer un nuevo pedido, enviame el Excel.`
           );
+          console.log('STEP 6: cancelled reply sent');
         } catch (err) {
           const e = err instanceof Error ? err : new Error(String(err));
-          console.error('WEBHOOK ERROR CANCEL_ORDER:', JSON.stringify({ message: e.message, stack: e.stack, name: e.name }));
+          console.error('STEP FAILED (CANCEL_ORDER):', JSON.stringify({ message: e.message, stack: e.stack, name: e.name }));
         }
         break;
       }
@@ -361,22 +376,26 @@ export async function POST(request: NextRequest) {
       case 'HELP': {
         try {
           const client = await identifyClient(message.phone);
-          console.log('WEBHOOK HELP identifyClient:', JSON.stringify({ phone: message.phone, found: !!client, organizationId: client?.organization_id ?? null }));
+          console.log('STEP 4 (HELP):', JSON.stringify({ phone: message.phone, found: !!client, organizationId: client?.organization_id ?? null }));
 
           if (!client) {
+            console.log('STEP 5: sending not-registered reply to', message.phone);
             await sendWhatsAppMessage(
               message.phone,
               `⚠️ Tu número *${message.phone}* no está registrado en el sistema de Grupo Sheina.\n\nContactá a Sheina para que te den de alta.`
             );
+            console.log('STEP 6: not-registered reply sent');
           } else {
+            console.log('STEP 5: sending help reply to', message.phone);
             await sendWhatsAppMessage(
               message.phone,
               `👋 ¡Hola${client.full_name ? `, ${client.full_name.split(' ')[0]}` : ''}! Soy el asistente de *Grupo Sheina*.\n\nPodés:\n📎 *Enviar tu Excel* de pedidos y lo proceso automáticamente\n✅ Responder *confirmo* para confirmar un pedido\n❌ Responder *cancelar* para anular un pedido\n\n¿En qué te puedo ayudar?`
             );
+            console.log('STEP 6: help reply sent');
           }
         } catch (err) {
           const e = err instanceof Error ? err : new Error(String(err));
-          console.error('WEBHOOK ERROR HELP:', JSON.stringify({ message: e.message, stack: e.stack, name: e.name }));
+          console.error('STEP FAILED (HELP):', JSON.stringify({ message: e.message, stack: e.stack, name: e.name }));
         }
         break;
       }
@@ -392,7 +411,7 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
-    console.error('WEBHOOK UNHANDLED ERROR:', JSON.stringify({ message: err.message, stack: err.stack, name: err.name }));
+    console.error('STEP FAILED (UNHANDLED):', JSON.stringify({ message: err.message, stack: err.stack, name: err.name }));
     return new NextResponse(
       '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
       { status: 200, headers: { 'Content-Type': 'text/xml' } }
