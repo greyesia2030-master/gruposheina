@@ -39,24 +39,38 @@ export async function POST(request: NextRequest) {
   try {
     const bodyText = await request.text();
 
-    // Log de entrada — temporal para debugging
+    // Log de entrada detallado
     const _p = new URLSearchParams(bodyText);
-    console.log('Webhook received:', {
+    const incomingFrom = _p.get('From') ?? '';
+    const incomingBody = _p.get('Body') ?? '';
+    const incomingNumMedia = _p.get('NumMedia') ?? '0';
+    const incomingMediaType = _p.get('MediaContentType0') ?? null;
+    console.log('WEBHOOK INCOMING:', JSON.stringify({
+      from: incomingFrom,
+      body: incomingBody.slice(0, 120),
+      numMedia: incomingNumMedia,
+      mediaType: incomingMediaType,
+      hasMedia: incomingNumMedia !== '0',
+    }));
+
+    // Log pre-validación de firma
+    const hasSignature = !!request.headers.get('x-twilio-signature');
+    const hasAuthToken = !!process.env.TWILIO_AUTH_TOKEN;
+    console.log('WEBHOOK SIGNATURE CHECK:', JSON.stringify({
+      hasSignature,
+      hasAuthToken,
       url: request.url,
-      from: _p.get('From'),
-      numMedia: _p.get('NumMedia'),
-      bodyPreview: _p.get('Body')?.slice(0, 80),
-      contentType: _p.get('MediaContentType0') ?? null,
-      hasSignature: !!request.headers.get('x-twilio-signature'),
-    });
+      signatureValue: request.headers.get('x-twilio-signature')?.slice(0, 20) + '...',
+    }));
 
     // Validar firma de Twilio (siempre, en todos los entornos)
     if (!validateTwilioSignature(request, bodyText)) {
-      console.error('Webhook: Twilio signature validation FAILED', {
+      console.error('WEBHOOK SIGNATURE FAILED:', JSON.stringify({
+        reason: !hasSignature ? 'missing x-twilio-signature header' : !hasAuthToken ? 'missing TWILIO_AUTH_TOKEN env var' : 'signature mismatch',
         url: request.url,
-        signature: request.headers.get('x-twilio-signature'),
-        hasAuthToken: !!process.env.TWILIO_AUTH_TOKEN,
-      });
+        hasSignature,
+        hasAuthToken,
+      }));
       return new NextResponse('Forbidden', { status: 403 });
     }
 
@@ -221,7 +235,8 @@ export async function POST(request: NextRequest) {
           const summary = formatOrderSummary(validatedData);
           await sendWhatsAppMessage(message.phone, summary);
         } catch (error) {
-          console.error('Error procesando Excel por WhatsApp:', error);
+          const e = error instanceof Error ? error : new Error(String(error));
+          console.error('WEBHOOK ERROR PROCESS_EXCEL:', JSON.stringify({ message: e.message, stack: e.stack, name: e.name }));
           await sendWhatsAppMessage(
             message.phone,
             '❌ Hubo un error al procesar tu archivo. Intentá de nuevo o contactá a Sheina.'
@@ -274,7 +289,8 @@ export async function POST(request: NextRequest) {
             `✅ ¡Pedido confirmado!\nTotal: ${order.total_units} viandas — ${order.week_label}\n\nSi necesitás hacer cambios antes del corte, enviá un nuevo Excel.`
           );
         } catch (err) {
-          console.error('Webhook CONFIRM_ORDER error:', err instanceof Error ? err.message : err);
+          const e = err instanceof Error ? err : new Error(String(err));
+          console.error('WEBHOOK ERROR CONFIRM_ORDER:', JSON.stringify({ message: e.message, stack: e.stack, name: e.name }));
         }
         break;
       }
@@ -336,19 +352,31 @@ export async function POST(request: NextRequest) {
             `🚫 Pedido cancelado — ${order.week_label}\n\nSi querés hacer un nuevo pedido, enviame el Excel.`
           );
         } catch (err) {
-          console.error('Webhook CANCEL_ORDER error:', err instanceof Error ? err.message : err);
+          const e = err instanceof Error ? err : new Error(String(err));
+          console.error('WEBHOOK ERROR CANCEL_ORDER:', JSON.stringify({ message: e.message, stack: e.stack, name: e.name }));
         }
         break;
       }
 
       case 'HELP': {
         try {
-          await sendWhatsAppMessage(
-            message.phone,
-            `👋 ¡Hola! Soy el asistente de *Grupo Sheina*.\n\nPodés:\n📎 *Enviar tu Excel* de pedidos y lo proceso automáticamente\n✅ Responder *confirmo* para confirmar un pedido\n❌ Responder *cancelar* para anular un pedido\n\n¿En qué te puedo ayudar?`
-          );
+          const client = await identifyClient(message.phone);
+          console.log('WEBHOOK HELP identifyClient:', JSON.stringify({ phone: message.phone, found: !!client, organizationId: client?.organization_id ?? null }));
+
+          if (!client) {
+            await sendWhatsAppMessage(
+              message.phone,
+              `⚠️ Tu número *${message.phone}* no está registrado en el sistema de Grupo Sheina.\n\nContactá a Sheina para que te den de alta.`
+            );
+          } else {
+            await sendWhatsAppMessage(
+              message.phone,
+              `👋 ¡Hola${client.full_name ? `, ${client.full_name.split(' ')[0]}` : ''}! Soy el asistente de *Grupo Sheina*.\n\nPodés:\n📎 *Enviar tu Excel* de pedidos y lo proceso automáticamente\n✅ Responder *confirmo* para confirmar un pedido\n❌ Responder *cancelar* para anular un pedido\n\n¿En qué te puedo ayudar?`
+            );
+          }
         } catch (err) {
-          console.error('Webhook HELP error enviando mensaje:', err instanceof Error ? err.message : err);
+          const e = err instanceof Error ? err : new Error(String(err));
+          console.error('WEBHOOK ERROR HELP:', JSON.stringify({ message: e.message, stack: e.stack, name: e.name }));
         }
         break;
       }
@@ -364,7 +392,7 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
-    console.error('Webhook unhandled error:', err.message, '\nStack:', err.stack);
+    console.error('WEBHOOK UNHANDLED ERROR:', JSON.stringify({ message: err.message, stack: err.stack, name: err.name }));
     return new NextResponse(
       '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
       { status: 200, headers: { 'Content-Type': 'text/xml' } }
