@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
           const buffer = Buffer.from(await fileRes.arrayBuffer());
 
           // Parsear Excel
-          const parseResult = parseSheinaExcel(buffer);
+          const parseResult = await parseSheinaExcel(buffer);
           if (parseResult.errors.length > 0) {
             await sendWhatsAppMessage(
               message.phone,

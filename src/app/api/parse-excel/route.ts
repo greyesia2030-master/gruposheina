@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
 
     // Parsear Excel
     const buffer = Buffer.from(await file.arrayBuffer());
-    const parseResult = parseSheinaExcel(buffer);
+    const parseResult = await parseSheinaExcel(buffer);
 
     if (parseResult.errors.length > 0) {
       return NextResponse.json(
