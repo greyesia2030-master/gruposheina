@@ -2,26 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { z } from "zod";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import { createBrowserClient } from "@/lib/supabase/client";
 import { INV_CATEGORY_LABELS } from "@/lib/types/inventory";
 import type { InventoryItem, InvCategory } from "@/lib/types/database";
 import { Save } from "lucide-react";
-
-const INV_CATEGORIES = Object.keys(INV_CATEGORY_LABELS) as [InvCategory, ...InvCategory[]];
-
-const editItemSchema = z.object({
-  name:        z.string().min(1, "El nombre es obligatorio").max(120),
-  category:    z.enum(INV_CATEGORIES),
-  supplier:    z.string().max(120).optional(),
-  minStock:    z.coerce.number().min(0, "El mínimo no puede ser negativo"),
-  costPerUnit: z.coerce.number().min(0, "El costo no puede ser negativo"),
-});
+import { updateItem } from "@/app/actions/inventory";
 
 const CATEGORY_OPTIONS = (
   Object.entries(INV_CATEGORY_LABELS) as [InvCategory, string][]
@@ -42,7 +31,6 @@ export function EditItemForm({ item }: EditItemFormProps) {
   const [saving, setSaving] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
-  const supabase = createBrowserClient();
 
   function update(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -56,41 +44,24 @@ export function EditItemForm({ item }: EditItemFormProps) {
     form.costPerUnit !== String(item.cost_per_unit);
 
   async function handleSave() {
-    const parsed = editItemSchema.safeParse({
+    setSaving(true);
+    const result = await updateItem({
+      id:          item.id,
       name:        form.name,
       category:    form.category,
       supplier:    form.supplier,
-      minStock:    parseFloat(form.minStock),
-      costPerUnit: parseFloat(form.costPerUnit),
+      minStock:    form.minStock,
+      costPerUnit: form.costPerUnit,
     });
+    setSaving(false);
 
-    if (!parsed.success) {
-      toast(parsed.error.issues[0]?.message ?? "Datos inválidos", "error");
+    if (!result.ok) {
+      toast(result.error, "error");
       return;
     }
 
-    setSaving(true);
-    try {
-      const { error } = await supabase
-        .from("inventory_items")
-        .update({
-          name:          parsed.data.name.trim(),
-          category:      parsed.data.category,
-          supplier:      parsed.data.supplier?.trim() || null,
-          min_stock:     parsed.data.minStock,
-          cost_per_unit: parsed.data.costPerUnit,
-        })
-        .eq("id", item.id);
-
-      if (error) throw error;
-
-      toast("Insumo actualizado", "success");
-      router.refresh();
-    } catch {
-      toast("Error al guardar cambios", "error");
-    } finally {
-      setSaving(false);
-    }
+    toast("Insumo actualizado", "success");
+    router.refresh();
   }
 
   return (

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
-import { createBrowserClient } from "@/lib/supabase/client";
+import { deactivateItem } from "@/app/actions/inventory";
 import { PowerOff, AlertTriangle } from "lucide-react";
 
 interface ActiveRecipe {
@@ -28,24 +28,17 @@ export function DeactivateItemButton({
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
-  const supabase = createBrowserClient();
 
   async function handleDeactivate() {
     setLoading(true);
-    try {
-      const { error } = await supabase
-        .from("inventory_items")
-        .update({ is_active: false })
-        .eq("id", itemId);
-
-      if (error) throw error;
-
-      toast(`"${itemName}" desactivado`, "success");
-      router.push("/inventario");
-    } catch {
-      toast("Error al desactivar el insumo", "error");
+    const result = await deactivateItem({ id: itemId });
+    if (!result.ok) {
+      toast(result.error, "error");
       setLoading(false);
+      return;
     }
+    toast(`"${itemName}" desactivado`, "success");
+    router.push("/inventario");
   }
 
   const hasRecipes = activeRecipes.length > 0;

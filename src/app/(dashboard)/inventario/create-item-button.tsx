@@ -2,32 +2,19 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
-import { createBrowserClient } from "@/lib/supabase/client";
 import { INV_CATEGORY_LABELS } from "@/lib/types/inventory";
 import type { InvCategory } from "@/lib/types/database";
 import { Plus } from "lucide-react";
+import { createItem } from "@/app/actions/inventory";
 
 const CATEGORY_OPTIONS = (Object.entries(INV_CATEGORY_LABELS) as [InvCategory, string][]).map(
   ([value, label]) => ({ value, label })
 );
-
-const INV_CATEGORIES = Object.keys(INV_CATEGORY_LABELS) as [InvCategory, ...InvCategory[]];
-
-const createItemSchema = z.object({
-  name:         z.string().min(1, "El nombre es obligatorio").max(120),
-  category:     z.enum(INV_CATEGORIES),
-  unit:         z.string().min(1, "La unidad es obligatoria").max(20),
-  currentStock: z.coerce.number().min(0, "El stock no puede ser negativo"),
-  minStock:     z.coerce.number().min(0, "El mínimo no puede ser negativo"),
-  costPerUnit:  z.coerce.number().min(0, "El costo no puede ser negativo"),
-  supplier:     z.string().max(120).optional(),
-});
 
 export function CreateItemButton() {
   const [open, setOpen] = useState(false);
@@ -43,66 +30,33 @@ export function CreateItemButton() {
   });
   const router = useRouter();
   const { toast } = useToast();
-  const supabase = createBrowserClient();
 
   function updateField(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
   async function handleCreate() {
-    const parsed = createItemSchema.safeParse({
-      ...form,
-      currentStock: parseFloat(form.currentStock),
-      minStock:     parseFloat(form.minStock),
-      costPerUnit:  parseFloat(form.costPerUnit),
+    setLoading(true);
+    const result = await createItem({
+      name:         form.name,
+      category:     form.category,
+      unit:         form.unit,
+      currentStock: form.currentStock,
+      minStock:     form.minStock,
+      costPerUnit:  form.costPerUnit,
+      supplier:     form.supplier,
     });
+    setLoading(false);
 
-    if (!parsed.success) {
-      toast(parsed.error.issues[0]?.message ?? "Datos inválidos", "error");
+    if (!result.ok) {
+      toast(result.error, "error");
       return;
     }
 
-    const data = parsed.data;
-    setLoading(true);
-    try {
-      const { data: newItem, error } = await supabase
-        .from("inventory_items")
-        .insert({
-          name:          data.name,
-          category:      data.category,
-          unit:          data.unit,
-          current_stock: data.currentStock,
-          min_stock:     data.minStock,
-          cost_per_unit: data.costPerUnit,
-          supplier:      data.supplier?.trim() || null,
-          is_active:     true,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      // Movimiento inicial si hay stock
-      if (data.currentStock > 0 && newItem) {
-        await supabase.from("inventory_movements").insert({
-          item_id:       newItem.id,
-          movement_type: "adjustment_pos",
-          quantity:      data.currentStock,
-          unit_cost:     data.costPerUnit,
-          reason:        "Stock inicial",
-          stock_after:   data.currentStock,
-        });
-      }
-
-      toast("Insumo creado", "success");
-      setOpen(false);
-      setForm({ name: "", category: "otros", unit: "kg", currentStock: "0", minStock: "0", costPerUnit: "0", supplier: "" });
-      router.refresh();
-    } catch {
-      toast("Error al crear insumo", "error");
-    } finally {
-      setLoading(false);
-    }
+    toast("Insumo creado", "success");
+    setOpen(false);
+    setForm({ name: "", category: "otros", unit: "kg", currentStock: "0", minStock: "0", costPerUnit: "0", supplier: "" });
+    router.refresh();
   }
 
   return (
