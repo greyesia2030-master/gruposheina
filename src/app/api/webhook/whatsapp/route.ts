@@ -39,8 +39,24 @@ export async function POST(request: NextRequest) {
   try {
     const bodyText = await request.text();
 
+    // Log de entrada — temporal para debugging
+    const _p = new URLSearchParams(bodyText);
+    console.log('Webhook received:', {
+      url: request.url,
+      from: _p.get('From'),
+      numMedia: _p.get('NumMedia'),
+      bodyPreview: _p.get('Body')?.slice(0, 80),
+      contentType: _p.get('MediaContentType0') ?? null,
+      hasSignature: !!request.headers.get('x-twilio-signature'),
+    });
+
     // Validar firma de Twilio (siempre, en todos los entornos)
     if (!validateTwilioSignature(request, bodyText)) {
+      console.error('Webhook: Twilio signature validation FAILED', {
+        url: request.url,
+        signature: request.headers.get('x-twilio-signature'),
+        hasAuthToken: !!process.env.TWILIO_AUTH_TOKEN,
+      });
       return new NextResponse('Forbidden', { status: 403 });
     }
 
@@ -215,113 +231,125 @@ export async function POST(request: NextRequest) {
       }
 
       case 'CONFIRM_ORDER': {
-        const client = await identifyClient(message.phone);
-        if (!client) {
-          await sendWhatsAppMessage(message.phone, '⚠️ No encontré tu cuenta.');
-          break;
+        try {
+          const client = await identifyClient(message.phone);
+          if (!client) {
+            await sendWhatsAppMessage(message.phone, '⚠️ No encontré tu cuenta asociada a este número. Contactá a Sheina para registrarte.');
+            break;
+          }
+
+          // Buscar último pedido draft del cliente
+          const { data: order } = await supabase
+            .from('orders')
+            .select('*')
+            .eq('organization_id', client.organization_id)
+            .eq('status', 'draft')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (!order) {
+            await sendWhatsAppMessage(message.phone, 'No encontré un pedido pendiente de confirmación.');
+            break;
+          }
+
+          await supabase
+            .from('orders')
+            .update({
+              status: 'confirmed' as const,
+              confirmed_at: new Date().toISOString(),
+              confirmed_by: client.id,
+            })
+            .eq('id', order.id);
+
+          await createOrderEvent({
+            orderId: order.id,
+            eventType: 'confirmed',
+            actorId: client.id,
+            actorRole: 'client',
+          });
+
+          await sendWhatsAppMessage(
+            message.phone,
+            `✅ ¡Pedido confirmado!\nTotal: ${order.total_units} viandas — ${order.week_label}\n\nSi necesitás hacer cambios antes del corte, enviá un nuevo Excel.`
+          );
+        } catch (err) {
+          console.error('Webhook CONFIRM_ORDER error:', err instanceof Error ? err.message : err);
         }
-
-        // Buscar último pedido draft del cliente
-        const { data: order } = await supabase
-          .from('orders')
-          .select('*')
-          .eq('organization_id', client.organization_id)
-          .eq('status', 'draft')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
-
-        if (!order) {
-          await sendWhatsAppMessage(message.phone, 'No encontré un pedido pendiente de confirmación.');
-          break;
-        }
-
-        await supabase
-          .from('orders')
-          .update({
-            status: 'confirmed' as const,
-            confirmed_at: new Date().toISOString(),
-            confirmed_by: client.id,
-          })
-          .eq('id', order.id);
-
-        await createOrderEvent({
-          orderId: order.id,
-          eventType: 'confirmed',
-          actorId: client.id,
-          actorRole: 'client',
-        });
-
-        await sendWhatsAppMessage(
-          message.phone,
-          `✅ ¡Pedido confirmado!\nTotal: ${order.total_units} viandas — ${order.week_label}\n\nSi necesitás hacer cambios antes del corte, enviá un nuevo Excel.`
-        );
         break;
       }
 
       case 'CANCEL_ORDER': {
-        const client = await identifyClient(message.phone);
-        if (!client) {
-          await sendWhatsAppMessage(message.phone, '⚠️ No encontré tu cuenta.');
-          break;
-        }
-
-        // Buscar último pedido draft o confirmed
-        const { data: order } = await supabase
-          .from('orders')
-          .select('*, menu:weekly_menus(*)')
-          .eq('organization_id', client.organization_id)
-          .in('status', ['draft', 'confirmed'])
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
-
-        if (!order) {
-          await sendWhatsAppMessage(message.phone, 'No encontré un pedido activo para cancelar.');
-          break;
-        }
-
-        // Si está confirmado, verificar ventana de corte
-        if (order.status === 'confirmed') {
-          const { data: org } = await supabase
-            .from('organizations')
-            .select('cutoff_time, cutoff_days_before')
-            .eq('id', client.organization_id)
-            .single();
-
-          if (org && !isWithinCutoff(order, order.menu, org)) {
-            await sendWhatsAppMessage(
-              message.phone,
-              '⚠️ Ya pasó el horario de corte. Contactá a Sheina para modificar tu pedido.'
-            );
+        try {
+          const client = await identifyClient(message.phone);
+          if (!client) {
+            await sendWhatsAppMessage(message.phone, '⚠️ No encontré tu cuenta asociada a este número. Contactá a Sheina para registrarte.');
             break;
           }
+
+          // Buscar último pedido draft o confirmed
+          const { data: order } = await supabase
+            .from('orders')
+            .select('*, menu:weekly_menus(*)')
+            .eq('organization_id', client.organization_id)
+            .in('status', ['draft', 'confirmed'])
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (!order) {
+            await sendWhatsAppMessage(message.phone, 'No encontré un pedido activo para cancelar.');
+            break;
+          }
+
+          // Si está confirmado, verificar ventana de corte
+          if (order.status === 'confirmed') {
+            const { data: org } = await supabase
+              .from('organizations')
+              .select('cutoff_time, cutoff_days_before')
+              .eq('id', client.organization_id)
+              .single();
+
+            if (org && !isWithinCutoff(order, order.menu, org)) {
+              await sendWhatsAppMessage(
+                message.phone,
+                '⚠️ Ya pasó el horario de corte. Contactá a Sheina para modificar tu pedido.'
+              );
+              break;
+            }
+          }
+
+          await supabase
+            .from('orders')
+            .update({ status: 'cancelled' })
+            .eq('id', order.id);
+
+          await createOrderEvent({
+            orderId: order.id,
+            eventType: 'cancelled',
+            actorId: client.id,
+            actorRole: 'client',
+          });
+
+          await sendWhatsAppMessage(
+            message.phone,
+            `🚫 Pedido cancelado — ${order.week_label}\n\nSi querés hacer un nuevo pedido, enviame el Excel.`
+          );
+        } catch (err) {
+          console.error('Webhook CANCEL_ORDER error:', err instanceof Error ? err.message : err);
         }
-
-        await supabase
-          .from('orders')
-          .update({ status: 'cancelled' })
-          .eq('id', order.id);
-
-        await createOrderEvent({
-          orderId: order.id,
-          eventType: 'cancelled',
-          actorId: client.id,
-          actorRole: 'client',
-        });
-
-        await sendWhatsAppMessage(
-          message.phone,
-          `🚫 Pedido cancelado — ${order.week_label}\n\nSi querés hacer un nuevo pedido, enviame el Excel.`
-        );
         break;
       }
 
       case 'HELP': {
-        await sendWhatsAppMessage(
-          message.phone,
-          `👋 ¡Hola! Soy el asistente de *Grupo Sheina*.\n\nPodés:\n📎 *Enviar tu Excel* de pedidos y lo proceso automáticamente\n✅ Responder *confirmo* para confirmar un pedido\n❌ Responder *cancelar* para anular un pedido\n\n¿En qué te puedo ayudar?`
-        );
+        try {
+          await sendWhatsAppMessage(
+            message.phone,
+            `👋 ¡Hola! Soy el asistente de *Grupo Sheina*.\n\nPodés:\n📎 *Enviar tu Excel* de pedidos y lo proceso automáticamente\n✅ Responder *confirmo* para confirmar un pedido\n❌ Responder *cancelar* para anular un pedido\n\n¿En qué te puedo ayudar?`
+          );
+        } catch (err) {
+          console.error('Webhook HELP error enviando mensaje:', err instanceof Error ? err.message : err);
+        }
         break;
       }
     }
@@ -335,7 +363,8 @@ export async function POST(request: NextRequest) {
       }
     );
   } catch (error) {
-    console.error('Error en webhook de WhatsApp:', error);
+    const err = error instanceof Error ? error : new Error(String(error));
+    console.error('Webhook unhandled error:', err.message, '\nStack:', err.stack);
     return new NextResponse(
       '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
       { status: 200, headers: { 'Content-Type': 'text/xml' } }
