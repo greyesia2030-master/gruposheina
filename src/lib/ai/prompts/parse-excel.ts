@@ -46,7 +46,7 @@ REGLAS:
 - Si la suma de departamentos no coincide con la cantidad principal, usar la suma de departamentos como valor correcto
 - Los días van de 1 (lunes) a 5 (viernes)
 - Hay 7 categorías de opción por día: principal, alternativa, sandwich, tarta, ensalada, veggie, especial
-- Respondé SOLO con el JSON, sin explicaciones adicionales`;
+- Respondé ÚNICAMENTE con JSON válido. Sin backticks, sin markdown, sin texto antes ni después del JSON.`;
 }
 
 /**

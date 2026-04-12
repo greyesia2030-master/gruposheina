@@ -6,6 +6,19 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 });
 
+function cleanJsonResponse(text: string): string {
+  let cleaned = text.trim();
+  if (cleaned.startsWith('```json')) {
+    cleaned = cleaned.slice(7);
+  } else if (cleaned.startsWith('```')) {
+    cleaned = cleaned.slice(3);
+  }
+  if (cleaned.endsWith('```')) {
+    cleaned = cleaned.slice(0, -3);
+  }
+  return cleaned.trim();
+}
+
 /**
  * Envía datos parseados del Excel a Claude para validación y estructuración.
  */
@@ -25,7 +38,7 @@ export async function parseExcelWithAI(rawData: ParseResult): Promise<ValidatedO
   }
 
   try {
-    const parsed = JSON.parse(textBlock.text) as ValidatedOrderData;
+    const parsed = JSON.parse(cleanJsonResponse(textBlock.text)) as ValidatedOrderData;
     return parsed;
   } catch {
     throw new Error(`Error al parsear JSON de Claude: ${textBlock.text.slice(0, 200)}`);
