@@ -7,7 +7,7 @@ import { createBrowserClient } from "@/lib/supabase/client";
 
 export function Header() {
   const router = useRouter();
-  const [userName, setUserName] = useState<string>("");
+  const [userName, setUserName] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
   const supabase = createBrowserClient();
 
@@ -18,11 +18,12 @@ export function Header() {
 
       const { data: profile } = await supabase
         .from("users")
-        .select("full_name")
-        .eq("auth_id", user.id)
+        .select("full_name, role")
+        .eq("id", user.id)
         .single();
 
       if (profile) setUserName(profile.full_name);
+      else setUserName(user.email ?? "Usuario");
     }
 
     async function loadPendingOrders() {
@@ -69,7 +70,7 @@ export function Header() {
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
             <User className="h-4 w-4" />
           </div>
-          <span className="hidden font-medium sm:inline">{userName || "Cargando..."}</span>
+          <span className="hidden font-medium sm:inline">{userName ?? "Cargando..."}</span>
         </div>
 
         {/* Cerrar sesión */}
