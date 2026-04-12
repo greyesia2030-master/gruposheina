@@ -6,8 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
-import { createBrowserClient } from "@/lib/supabase/client";
-import { duplicateMenu } from "@/hooks/use-menus";
+import { duplicateMenu } from "@/app/actions/menus";
 import { Copy } from "lucide-react";
 import { addDays, getISOWeek } from "date-fns";
 
@@ -22,7 +21,6 @@ export function DuplicateMenuButton({ sourceMenuId, sourceWeekLabel }: Duplicate
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
-  const supabase = createBrowserClient();
 
   // Preview de la fecha fin
   const weekEndPreview = weekStart
@@ -36,17 +34,16 @@ export function DuplicateMenuButton({ sourceMenuId, sourceWeekLabel }: Duplicate
   async function handleDuplicate() {
     if (!weekStart) return;
     setLoading(true);
-    try {
-      const { data, error } = await duplicateMenu(sourceMenuId, weekStart, supabase);
-      if (error || !data) throw error ?? new Error("Error desconocido");
-      toast("Menú duplicado correctamente", "success");
-      setOpen(false);
-      router.push(`/menus/${data.id}`);
-    } catch {
-      toast("Error al duplicar el menú", "error");
-    } finally {
-      setLoading(false);
+    const result = await duplicateMenu({ sourceMenuId, weekStart });
+    setLoading(false);
+
+    if (!result.ok) {
+      toast(result.error, "error");
+      return;
     }
+    toast("Menú duplicado correctamente", "success");
+    setOpen(false);
+    router.push(`/menus/${result.data.id}`);
   }
 
   return (

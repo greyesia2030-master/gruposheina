@@ -7,10 +7,15 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
-import { createBrowserClient } from "@/lib/supabase/client";
 import { CATEGORY_LABELS, CATEGORY_ORDER } from "@/lib/types/menus";
 import { DAY_NAMES } from "@/lib/types/orders";
 import { getNextOptionCode } from "@/hooks/use-menus";
+import {
+  addMenuItem,
+  deleteMenuItem,
+  publishMenu as publishMenuAction,
+  updateMenuItemField,
+} from "@/app/actions/menus";
 import { Plus, Trash2, CheckCircle2 } from "lucide-react";
 import type { MenuItem, MenuCategory, MenuStatus } from "@/lib/types/database";
 
@@ -44,7 +49,6 @@ export function MenuEditor({ menuId, menuStatus, items: initialItems, recipeOpti
   const debounceRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const router = useRouter();
   const { toast } = useToast();
-  const supabase = createBrowserClient();
 
   const dayItems = items.filter((item) => item.day_of_week === activeDay);
   const isEditable = menuStatus !== "archived";
@@ -65,13 +69,14 @@ export function MenuEditor({ menuId, menuStatus, items: initialItems, recipeOpti
 
       const timer = setTimeout(async () => {
         debounceRef.current.delete(key);
-        const { error } = await supabase
-          .from("menu_items")
-          .update({ [field]: value })
-          .eq("id", itemId);
+        const result = await updateMenuItemField({
+          itemId,
+          field: field as "display_name" | "category" | "recipe_version_id" | "is_available",
+          value,
+        });
 
-        if (error) {
-          toast("Error al guardar", "error");
+        if (!result.ok) {
+          toast(result.error, "error");
         } else {
           setSavedId(itemId);
           setTimeout(() => setSavedId(null), 1500);
@@ -80,7 +85,7 @@ export function MenuEditor({ menuId, menuStatus, items: initialItems, recipeOpti
 
       debounceRef.current.set(key, timer);
     },
-    [supabase, toast]
+    [toast]
   );
 
   // ── Agregar opción ────────────────────────────────────────────────────────
@@ -89,26 +94,20 @@ export function MenuEditor({ menuId, menuStatus, items: initialItems, recipeOpti
     const dayCount = items.filter((i) => i.day_of_week === activeDay).length;
     const optionCode = getNextOptionCode(activeDay, dayCount);
 
-    const { data, error } = await supabase
-      .from("menu_items")
-      .insert({
-        menu_id: menuId,
-        day_of_week: activeDay,
-        option_code: optionCode,
-        category: "principal" as MenuCategory,
-        display_name: "Nueva opción",
-        is_available: true,
-        recipe_version_id: null,
-      })
-      .select()
-      .single();
+    const result = await addMenuItem({
+      menuId,
+      dayOfWeek: activeDay,
+      optionCode,
+      category: "principal" as MenuCategory,
+      displayName: "Nueva opción",
+    });
 
-    if (error) {
-      toast("Error al agregar opción", "error");
-    } else if (data) {
-      setItems((prev) => [...prev, data]);
-      toast(`Opción ${optionCode} agregada`, "success");
+    if (!result.ok) {
+      toast(result.error, "error");
+      return;
     }
+    setItems((prev) => [...prev, result.data as MenuItem]);
+    toast(`Opción ${optionCode} agregada`, "success");
   }
 
   // ── Eliminar opción ───────────────────────────────────────────────────────
@@ -116,29 +115,25 @@ export function MenuEditor({ menuId, menuStatus, items: initialItems, recipeOpti
   async function removeItem(itemId: string) {
     if (!confirm("¿Eliminar esta opción? Esta acción no se puede deshacer.")) return;
 
-    const { error } = await supabase.from("menu_items").delete().eq("id", itemId);
-    if (error) {
-      toast("Error al eliminar", "error");
-    } else {
-      setItems((prev) => prev.filter((i) => i.id !== itemId));
-      toast("Opción eliminada", "success");
+    const result = await deleteMenuItem({ itemId });
+    if (!result.ok) {
+      toast(result.error, "error");
+      return;
     }
+    setItems((prev) => prev.filter((i) => i.id !== itemId));
+    toast("Opción eliminada", "success");
   }
 
   // ── Publicar menú ─────────────────────────────────────────────────────────
 
   async function publishMenu() {
-    const { error } = await supabase
-      .from("weekly_menus")
-      .update({ status: "published" as MenuStatus })
-      .eq("id", menuId);
-
-    if (error) {
-      toast("Error al publicar", "error");
-    } else {
-      toast("Menú publicado ✓", "success");
-      router.refresh();
+    const result = await publishMenuAction({ menuId });
+    if (!result.ok) {
+      toast(result.error, "error");
+      return;
     }
+    toast("Menú publicado ✓", "success");
+    router.refresh();
   }
 
   return (

@@ -2,21 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
-import { createBrowserClient } from "@/lib/supabase/client";
+import { createMenu } from "@/app/actions/menus";
 import { getISOWeek, addDays } from "date-fns";
 import { Plus } from "lucide-react";
-
-const createMenuSchema = z.object({
-  weekStart: z.string().min(1, "Seleccioná una fecha de inicio").regex(
-    /^\d{4}-\d{2}-\d{2}$/,
-    "Formato de fecha inválido"
-  ),
-});
 
 export function CreateMenuButton() {
   const [open, setOpen] = useState(false);
@@ -24,42 +16,20 @@ export function CreateMenuButton() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
-  const supabase = createBrowserClient();
 
   async function handleCreate() {
-    const parsed = createMenuSchema.safeParse({ weekStart });
-    if (!parsed.success) {
-      toast(parsed.error.issues[0]?.message ?? "Datos inválidos", "error");
+    setLoading(true);
+    const result = await createMenu({ weekStart });
+    setLoading(false);
+
+    if (!result.ok) {
+      toast(result.error, "error");
       return;
     }
 
-    setLoading(true);
-    try {
-      const start = new Date(weekStart);
-      const end = addDays(start, 4);
-      const weekNumber = getISOWeek(start);
-
-      const { data, error } = await supabase
-        .from("weekly_menus")
-        .insert({
-          week_start: weekStart,
-          week_end: end.toISOString().split("T")[0],
-          week_number: weekNumber,
-          status: "draft",
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      toast("Menú creado", "success");
-      setOpen(false);
-      router.push(`/menus/${data.id}`);
-    } catch {
-      toast("Error al crear menú", "error");
-    } finally {
-      setLoading(false);
-    }
+    toast("Menú creado", "success");
+    setOpen(false);
+    router.push(`/menus/${result.data.id}`);
   }
 
   return (
