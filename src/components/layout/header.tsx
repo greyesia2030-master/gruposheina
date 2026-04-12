@@ -19,7 +19,7 @@ export function Header() {
       const { data: profile } = await supabase
         .from("users")
         .select("full_name, role")
-        .eq("id", user.id)
+        .eq("auth_id", user.id)
         .single();
 
       if (profile) setUserName(profile.full_name);

@@ -5,7 +5,8 @@ const client = twilio(
   process.env.TWILIO_AUTH_TOKEN!
 );
 
-const FROM = process.env.TWILIO_WHATSAPP_FROM ?? 'whatsapp:+14155238886';
+const rawFrom = process.env.TWILIO_WHATSAPP_FROM ?? '+14155238886';
+const FROM = rawFrom.startsWith('whatsapp:') ? rawFrom : `whatsapp:${rawFrom}`;
 
 /**
  * Envía un mensaje de texto por WhatsApp vía Twilio.

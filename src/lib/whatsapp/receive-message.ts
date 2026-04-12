@@ -77,7 +77,8 @@ export function normalizeToE164(raw: string): string | null {
 
 /**
  * Identifica al cliente por su número de teléfono.
- * Usa match exacto sobre E.164 normalizado — nunca sufijos ni ilike.
+ * Usa match exacto sobre E.164 normalizado. Si no encuentra, intenta la
+ * variante argentina: +549XXXXXXXX ↔ +54XXXXXXXX (prefijo de celular).
  */
 export async function identifyClient(phone: string) {
   const normalized = normalizeToE164(phone);
@@ -92,5 +93,24 @@ export async function identifyClient(phone: string) {
     .limit(1)
     .maybeSingle();
 
-  return user;
+  if (user) return user;
+
+  // Variante argentina: +549XXXXXXXX ↔ +54XXXXXXXX
+  let alt: string | null = null;
+  if (normalized.startsWith('+549')) {
+    alt = '+54' + normalized.slice(4);
+  } else if (normalized.startsWith('+54') && !normalized.startsWith('+549')) {
+    alt = '+549' + normalized.slice(3);
+  }
+  if (!alt) return null;
+
+  const { data: altUser } = await supabase
+    .from('users')
+    .select('*, organization:organizations(*)')
+    .eq('phone', alt)
+    .eq('is_active', true)
+    .limit(1)
+    .maybeSingle();
+
+  return altUser ?? null;
 }
