@@ -34,21 +34,25 @@ export default async function MenuDetailPage({
   // menu_items.recipe_version_id apunta a recipe_versions.id, no a recipes.id
   const { data: recipeVersions } = await supabase
     .from("recipe_versions")
-    .select("id, version, recipe:recipes!inner(id, name, category)")
-    .eq("is_current", true)
-    .eq("recipes.is_active", true)
-    .order("recipes(name)");
+    .select("id, recipe:recipes!inner(id, name, category, is_active)")
+    .eq("is_current", true);
 
-  // Supabase devuelve joins como arrays
-  const recipeOptions = (recipeVersions ?? []).map((rv) => {
-    const recipe = (rv.recipe as unknown as { id: string; name: string; category: string }[])?.[0];
-    return {
-      versionId: rv.id,
-      recipeId: recipe?.id ?? "",
-      name: recipe?.name ?? "",
-      category: recipe?.category ?? "",
-    };
-  }).filter((r) => r.recipeId);
+  // PostgREST devuelve objeto (no array) para FK many-to-one (recipe_versions.recipe_id → recipes.id).
+  // Se maneja ambos casos por defensividad.
+  const recipeOptions = (recipeVersions ?? [])
+    .map((rv) => {
+      const raw = rv.recipe;
+      const recipe = (Array.isArray(raw) ? raw[0] : raw) as {
+        id: string;
+        name: string;
+        category: string;
+        is_active: boolean;
+      } | null | undefined;
+      if (!recipe?.id || !recipe.is_active) return null;
+      return { versionId: rv.id, recipeId: recipe.id, name: recipe.name, category: recipe.category };
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null)
+    .sort((a, b) => a.name.localeCompare(b.name, "es"));
 
   const statusVariant =
     menu.status === "published" ? "success" : menu.status === "archived" ? "warning" : "default";
