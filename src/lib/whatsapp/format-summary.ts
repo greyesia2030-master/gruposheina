@@ -67,3 +67,54 @@ export function formatOrderSummary(orderData: ValidatedOrderData): string {
 
   return lines.join('\n');
 }
+
+/**
+ * Genera un resumen detallado del pedido con desglose por departamento.
+ * Diseñado para la consulta de "detalle" o para el admin panel.
+ * Más largo que formatOrderSummary — usar sendLongWhatsAppMessage.
+ */
+export function formatOrderSummaryDetailed(orderData: ValidatedOrderData): string {
+  const lines: string[] = [];
+
+  lines.push(`📋 *Detalle — ${orderData.weekLabel}*`);
+
+  let weekTotal = 0;
+
+  for (const day of orderData.days) {
+    const activeOptions = day.options.filter((o) => o.mainQuantity > 0);
+    const dayLabel = DAY_LABELS[day.dayOfWeek] ?? day.dayName;
+
+    lines.push('');
+
+    if (day.totalUnits === 0 || activeOptions.length === 0) {
+      lines.push(`*${dayLabel}* — sin pedido`);
+      continue;
+    }
+
+    lines.push(`*${dayLabel}* — ${day.totalUnits} vnd`);
+
+    for (const opt of activeOptions) {
+      const depts = Object.entries(opt.departments)
+        .filter(([, qty]) => qty > 0)
+        .map(([dept, qty]) => `${dept}:${qty}`)
+        .join(' ');
+      const deptsStr = depts ? ` _(${depts})_` : '';
+      lines.push(`  ${opt.code}. ${shortName(opt.displayName, 24)}: ${opt.mainQuantity}${deptsStr}`);
+    }
+
+    weekTotal += day.totalUnits;
+  }
+
+  lines.push('');
+  lines.push(`*Total semanal: ${weekTotal} viandas*`);
+
+  if (orderData.anomalies.length > 0) {
+    lines.push('');
+    lines.push('⚠️ *Observaciones:*');
+    for (const anomaly of orderData.anomalies.slice(0, 5)) {
+      lines.push(`  • ${anomaly.slice(0, 100)}`);
+    }
+  }
+
+  return lines.join('\n');
+}
