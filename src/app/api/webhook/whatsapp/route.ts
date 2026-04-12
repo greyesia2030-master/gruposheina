@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { after } from 'next/server';
 import crypto from 'crypto';
 import { processIncomingMessage, identifyClient } from '@/lib/whatsapp/receive-message';
 import { sendWhatsAppMessage } from '@/lib/whatsapp/send-message';
@@ -33,6 +34,161 @@ function validateTwilioSignature(request: NextRequest, body: string): boolean {
 
   if (expected.length !== actual.length) return false;
   return crypto.timingSafeEqual(expected, actual);
+}
+
+/**
+ * Procesa el Excel en background (después de retornar 200 a Twilio).
+ * Se invoca via after() para no bloquear la respuesta.
+ */
+async function processExcelBackground(phone: string, mediaUrl: string) {
+  try {
+    console.log('EXCEL: downloading from URL...');
+    const fileRes = await fetch(mediaUrl, {
+      headers: {
+        'Authorization': `Basic ${Buffer.from(
+          `${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`
+        ).toString('base64')}`,
+      },
+    });
+    const buffer = Buffer.from(await fileRes.arrayBuffer());
+    console.log('EXCEL: downloaded, size =', buffer.length, 'bytes');
+
+    console.log('EXCEL: parsing with sheina-parser...');
+    const parseResult = await parseSheinaExcel(buffer);
+    console.log('EXCEL: parsed,', parseResult.errors.length, 'errors,', parseResult.weeks?.length ?? 0, 'weeks');
+
+    if (parseResult.errors.length > 0) {
+      await sendWhatsAppMessage(
+        phone,
+        `❌ No pude leer el Excel:\n${parseResult.errors.join('\n')}\n\nPor favor verificá el archivo y envialo de nuevo.`
+      );
+      return;
+    }
+
+    console.log('EXCEL: calling Claude API...');
+    const validatedData = await parseExcelWithAI(parseResult);
+    console.log('EXCEL: Claude response received, weekLabel =', validatedData.weekLabel, 'totalUnits =', validatedData.totalUnits);
+
+    console.log('EXCEL: identifying client for phone', phone);
+    const client = await identifyClient(phone);
+    console.log('EXCEL: client =', client?.id ?? 'NOT FOUND');
+
+    if (!client || !client.organization_id) {
+      await sendWhatsAppMessage(
+        phone,
+        '⚠️ No encontré tu cuenta asociada a este número. Contactá a Sheina para registrarte.'
+      );
+      return;
+    }
+
+    console.log('EXCEL: creating order in DB...');
+    const supabase = await createSupabaseAdmin();
+
+    // Buscar menú publicado vigente
+    const { data: matchingMenu } = await supabase
+      .from('weekly_menus')
+      .select('id, week_start, week_end')
+      .eq('status', 'published')
+      .order('week_start', { ascending: false })
+      .limit(5);
+
+    let menuId: string | null = null;
+    if (matchingMenu && matchingMenu.length > 0) {
+      const today = new Date().toISOString().slice(0, 10);
+      const current = matchingMenu.find((m) => m.week_start <= today && m.week_end >= today);
+      menuId = (current ?? matchingMenu[0]).id;
+    }
+
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .insert({
+        organization_id: client.organization_id,
+        menu_id: menuId,
+        week_label: validatedData.weekLabel,
+        status: 'draft',
+        source: 'whatsapp_excel',
+        total_units: validatedData.totalUnits,
+        ai_parsing_log: validatedData as unknown as Record<string, unknown>,
+      })
+      .select()
+      .single();
+
+    if (orderError || !order) {
+      throw new Error(`Error creando pedido: ${orderError?.message}`);
+    }
+    console.log('EXCEL: order created, id =', order.id);
+
+    // Líneas de pedido
+    const lines = validatedData.days.flatMap((day) =>
+      day.options.flatMap((opt) =>
+        Object.entries(opt.departments).map(([dept, qty]) => ({
+          order_id: order.id,
+          day_of_week: day.dayOfWeek,
+          department: dept,
+          quantity: qty,
+          unit_price: 0,
+          option_code: opt.code,
+          display_name: opt.displayName,
+        }))
+      )
+    );
+    if (lines.length > 0) {
+      await supabase.from('order_lines').insert(lines);
+      console.log('EXCEL:', lines.length, 'order lines created');
+    }
+
+    // Subir Excel a Storage (no bloquea si falla)
+    try {
+      const storagePath = `${client.organization_id}/${order.id}/original.xlsx`;
+      const { error: uploadError } = await supabase.storage
+        .from('order-files')
+        .upload(storagePath, buffer, {
+          contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          upsert: true,
+        });
+
+      if (!uploadError) {
+        const { data: urlData, error: signErr } = await supabase.storage
+          .from('order-files')
+          .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+
+        if (!signErr && urlData) {
+          await supabase
+            .from('orders')
+            .update({ original_file_url: urlData.signedUrl })
+            .eq('id', order.id);
+        }
+      }
+    } catch (storageErr) {
+      console.error('EXCEL: storage upload error (non-fatal):', storageErr);
+    }
+
+    // Evento de auditoría
+    await createOrderEvent({
+      orderId: order.id,
+      eventType: 'created',
+      actorId: client.id,
+      actorRole: 'client',
+      payload: { source: 'whatsapp_excel', totalUnits: validatedData.totalUnits },
+    });
+
+    // Enviar resumen
+    console.log('EXCEL: order created, sending summary...');
+    const summary = formatOrderSummary(validatedData);
+    await sendWhatsAppMessage(phone, summary);
+    console.log('EXCEL: summary sent');
+  } catch (error) {
+    const e = error instanceof Error ? error : new Error(String(error));
+    console.error('STEP FAILED (PROCESS_EXCEL background):', JSON.stringify({ message: e.message, stack: e.stack, name: e.name }));
+    try {
+      await sendWhatsAppMessage(
+        phone,
+        '❌ Hubo un error al procesar tu archivo. Intentá de nuevo o contactá a Sheina.'
+      );
+    } catch {
+      // ignorar error al enviar el mensaje de error
+    }
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -92,158 +248,15 @@ export async function POST(request: NextRequest) {
 
     switch (message.action) {
       case 'PROCESS_EXCEL': {
-        // Enviar confirmación inmediata (respetar timeout de 15s de Twilio)
-        console.log('STEP 5: sending reply (PROCESS_EXCEL ack) to', message.phone);
+        // Enviar ACK inmediato para cumplir con el timeout de Twilio
+        console.log('STEP 5: sending ack to', message.phone);
         await sendWhatsAppMessage(message.phone, '📥 Recibí tu archivo. Estoy procesándolo...');
-        console.log('STEP 6: reply sent (PROCESS_EXCEL ack)');
+        console.log('STEP 6: ack sent — deferring Excel processing to background via after()');
 
-        try {
-          // Descargar archivo desde Twilio
-          const fileRes = await fetch(message.mediaUrl!, {
-            headers: {
-              'Authorization': `Basic ${Buffer.from(
-                `${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`
-              ).toString('base64')}`,
-            },
-          });
-          const buffer = Buffer.from(await fileRes.arrayBuffer());
-
-          // Parsear Excel
-          const parseResult = await parseSheinaExcel(buffer);
-          if (parseResult.errors.length > 0) {
-            await sendWhatsAppMessage(
-              message.phone,
-              `❌ No pude leer el Excel:\n${parseResult.errors.join('\n')}\n\nPor favor verificá el archivo y envialo de nuevo.`
-            );
-            break;
-          }
-
-          // Validar con IA
-          const validatedData = await parseExcelWithAI(parseResult);
-
-          // Identificar cliente
-          const client = await identifyClient(message.phone);
-          console.log('STEP 4 (EXCEL): client =', client?.id ?? 'NOT FOUND');
-          if (!client || !client.organization_id) {
-            await sendWhatsAppMessage(
-              message.phone,
-              '⚠️ No encontré tu cuenta asociada a este número. Contactá a Sheina para registrarte.'
-            );
-            break;
-          }
-
-          // Buscar el menú semanal publicado
-          const firstDay = validatedData.days[0];
-          let menuId: string | null = null;
-          if (firstDay) {
-            const { data: matchingMenu } = await supabase
-              .from('weekly_menus')
-              .select('id, week_start, week_end')
-              .eq('status', 'published')
-              .order('week_start', { ascending: false })
-              .limit(5);
-
-            if (matchingMenu && matchingMenu.length > 0) {
-              const today = new Date().toISOString().slice(0, 10);
-              const current = matchingMenu.find(
-                (m) => m.week_start <= today && m.week_end >= today
-              );
-              menuId = (current ?? matchingMenu[0]).id;
-            }
-          }
-
-          // Crear pedido
-          const { data: order, error: orderError } = await supabase
-            .from('orders')
-            .insert({
-              organization_id: client.organization_id,
-              menu_id: menuId,
-              week_label: validatedData.weekLabel,
-              status: 'draft',
-              source: 'whatsapp_excel',
-              total_units: validatedData.totalUnits,
-              ai_parsing_log: validatedData as unknown as Record<string, unknown>,
-            })
-            .select()
-            .single();
-
-          if (orderError || !order) {
-            throw new Error(`Error creando pedido: ${orderError?.message}`);
-          }
-
-          // Crear líneas de pedido
-          const lines = validatedData.days.flatMap((day) =>
-            day.options.flatMap((opt) =>
-              Object.entries(opt.departments).map(([dept, qty]) => ({
-                order_id: order.id,
-                day_of_week: day.dayOfWeek,
-                department: dept,
-                quantity: qty,
-                unit_price: 0,
-                option_code: opt.code,
-                display_name: opt.displayName,
-              }))
-            )
-          );
-
-          if (lines.length > 0) {
-            await supabase.from('order_lines').insert(lines);
-          }
-
-          // Subir Excel original a Supabase Storage
-          let originalFileUrl: string | null = null;
-          try {
-            const storagePath = `${client.organization_id}/${order.id}/original.xlsx`;
-            const { error: uploadError } = await supabase.storage
-              .from('order-files')
-              .upload(storagePath, buffer, {
-                contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                upsert: true,
-              });
-
-            if (!uploadError) {
-              const { data: urlData, error: signErr } = await supabase.storage
-                .from('order-files')
-                .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
-
-              if (signErr) {
-                console.error('Error firmando URL:', signErr);
-              } else {
-                originalFileUrl = urlData.signedUrl;
-                await supabase
-                  .from('orders')
-                  .update({ original_file_url: originalFileUrl })
-                  .eq('id', order.id);
-              }
-            } else {
-              console.error('Error subiendo Excel a Storage:', uploadError);
-            }
-          } catch (storageErr) {
-            console.error('Error en Storage upload:', storageErr);
-          }
-
-          // Evento de auditoría
-          await createOrderEvent({
-            orderId: order.id,
-            eventType: 'created',
-            actorId: client.id,
-            actorRole: 'client',
-            payload: { source: 'whatsapp_excel', totalUnits: validatedData.totalUnits },
-          });
-
-          // Enviar resumen
-          const summary = formatOrderSummary(validatedData);
-          console.log('STEP 5: sending summary to', message.phone);
-          await sendWhatsAppMessage(message.phone, summary);
-          console.log('STEP 6: summary sent');
-        } catch (error) {
-          const e = error instanceof Error ? error : new Error(String(error));
-          console.error('STEP FAILED (PROCESS_EXCEL):', JSON.stringify({ message: e.message, stack: e.stack, name: e.name }));
-          await sendWhatsAppMessage(
-            message.phone,
-            '❌ Hubo un error al procesar tu archivo. Intentá de nuevo o contactá a Sheina.'
-          );
-        }
+        // Procesar en background DESPUÉS de retornar el 200 a Twilio.
+        // after() garantiza que el processing continúa hasta completarse
+        // aunque la Response ya fue enviada.
+        after(processExcelBackground(message.phone, message.mediaUrl!));
         break;
       }
 
@@ -401,7 +414,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Responder 200 OK a Twilio (TwiML vacío)
+    // Retornar 200 a Twilio inmediatamente.
+    // Para PROCESS_EXCEL, el procesamiento continúa en background via after().
     return new NextResponse(
       '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
       {
