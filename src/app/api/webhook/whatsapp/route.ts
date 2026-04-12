@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { after } from 'next/server';
 import crypto from 'crypto';
 import { processIncomingMessage, identifyClient } from '@/lib/whatsapp/receive-message';
-import { sendWhatsAppMessage } from '@/lib/whatsapp/send-message';
+import { sendWhatsAppMessage, sendLongWhatsAppMessage } from '@/lib/whatsapp/send-message';
 import { formatOrderSummary } from '@/lib/whatsapp/format-summary';
 import { parseSheinaExcel } from '@/lib/excel/sheina-parser';
 import { parseExcelWithAI } from '@/lib/ai/claude-client';
@@ -172,11 +172,12 @@ async function processExcelBackground(phone: string, mediaUrl: string) {
       payload: { source: 'whatsapp_excel', totalUnits: validatedData.totalUnits },
     });
 
-    // Enviar resumen
+    // Enviar resumen (splitting automático si supera 1,500 chars)
     console.log('EXCEL: order created, sending summary...');
     const summary = formatOrderSummary(validatedData);
-    await sendWhatsAppMessage(phone, summary);
-    console.log('EXCEL: summary sent');
+    console.log('EXCEL: summary length =', summary.length, 'chars');
+    const sids = await sendLongWhatsAppMessage(phone, summary);
+    console.log('EXCEL: summary sent,', sids.length, 'message(s):', sids.join(', '));
   } catch (error) {
     const errorDetail = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : '';

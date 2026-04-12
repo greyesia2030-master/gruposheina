@@ -8,45 +8,62 @@ const DAY_LABELS: Record<number, string> = {
   5: 'VIERNES',
 };
 
+function shortName(name: string, maxLen = 28): string {
+  if (name.length <= maxLen) return name;
+  return name.slice(0, maxLen - 3) + '...';
+}
+
 /**
- * Genera un mensaje de WhatsApp legible con el resumen del pedido.
+ * Genera un resumen compacto del pedido para WhatsApp.
+ * Diseñado para mantenerse ~900 chars en pedidos típicos.
+ * Para pedidos grandes se usa sendLongWhatsAppMessage que hace splitting.
  */
 export function formatOrderSummary(orderData: ValidatedOrderData): string {
   const lines: string[] = [];
 
-  lines.push(`📋 *Resumen de pedido — ${orderData.weekLabel}*`);
-  lines.push('');
+  lines.push(`📋 *Resumen — ${orderData.weekLabel}*`);
 
   let weekTotal = 0;
 
   for (const day of orderData.days) {
+    const activeOptions = day.options.filter((o) => o.mainQuantity > 0);
     const dayLabel = DAY_LABELS[day.dayOfWeek] ?? day.dayName;
-    lines.push(`*${dayLabel}*`);
 
-    for (const opt of day.options) {
-      if (opt.mainQuantity > 0) {
-        lines.push(`  ${opt.code}. ${opt.displayName}: ${opt.mainQuantity}`);
-      }
+    lines.push('');
+
+    if (day.totalUnits === 0 || activeOptions.length === 0) {
+      lines.push(`*${dayLabel}* — sin pedido`);
+      continue;
     }
 
-    lines.push(`  _Total del día: ${day.totalUnits}_`);
-    lines.push('');
+    // Cabecera de día con total inline (ahorra una línea por día)
+    lines.push(`*${dayLabel}* — ${day.totalUnits} vnd`);
+
+    for (const opt of activeOptions) {
+      lines.push(`  ${opt.code}. ${shortName(opt.displayName)}: ${opt.mainQuantity}`);
+    }
+
     weekTotal += day.totalUnits;
   }
 
+  lines.push('');
   lines.push(`*Total semanal: ${weekTotal} viandas*`);
 
-  // Agregar anomalías si hay
+  // Anomalías: max 3, truncadas a 80 chars
   if (orderData.anomalies.length > 0) {
     lines.push('');
     lines.push('⚠️ *Observaciones:*');
-    for (const anomaly of orderData.anomalies) {
-      lines.push(`  • ${anomaly}`);
+    const shown = orderData.anomalies.slice(0, 3);
+    for (const anomaly of shown) {
+      lines.push(`  • ${anomaly.slice(0, 80)}`);
+    }
+    if (orderData.anomalies.length > 3) {
+      lines.push(`  • ...y ${orderData.anomalies.length - 3} más`);
     }
   }
 
   lines.push('');
-  lines.push('Respondé *confirmo* para confirmar o *cancelar* para anular.');
+  lines.push('Respondé *confirmo* o *cancelar*');
 
   return lines.join('\n');
 }
