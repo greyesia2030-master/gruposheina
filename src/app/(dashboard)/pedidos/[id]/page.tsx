@@ -153,7 +153,7 @@ export default async function PedidoDetailPage({
         action={
           <div className="flex flex-wrap items-center gap-2">
             {canSendReminder && <SendReminderButton orderId={order.id} />}
-            {canRetryInventory && <RetryInventoryButton orderId={order.id} />}
+            {false && canRetryInventory && <RetryInventoryButton orderId={order.id} />}
             <OrderActions
               orderId={order.id}
               status={order.status as OrderStatus}
