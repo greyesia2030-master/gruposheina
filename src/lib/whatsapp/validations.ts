@@ -17,6 +17,17 @@ export interface DraftValidationResult extends ValidationResult {
   totalUnits?: number;
 }
 
+export interface DuplicateCheckResult {
+  /** Always true — caller should proceed; check cancelledDraftId to know if a draft was silently cancelled */
+  ok: true;
+  cancelledDraftId?: string;
+  cancelledWeekLabel?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Existing validations
+// ---------------------------------------------------------------------------
+
 /**
  * Verifica que el teléfono esté en la lista authorized_phones de la organización.
  * Si la lista está vacía, cualquier teléfono vinculado al cliente pasa.
@@ -38,7 +49,6 @@ export async function validateAuthorizedPhone(
     const list: string[] = org.authorized_phones ?? [];
     if (list.length === 0) return { ok: true }; // sin restricción
 
-    // Normalizar comparación (ignorar variante +549/+54)
     const normalized = phone.replace(/^whatsapp:/i, '').replace(/^\+549/, '+54');
     const match = list.some((p) => {
       const n = p.replace(/^\+549/, '+54');
@@ -112,7 +122,6 @@ export function validateExcelFile(
 
 /**
  * Verifica que el teléfono esté registrado como usuario activo en el sistema.
- * Usa el fallback de variante argentina (+549 ↔ +54).
  */
 export async function validateRegisteredUser(
   phone: string
@@ -126,3 +135,68 @@ export async function validateRegisteredUser(
   }
   return { ok: true, user: user as User & { organization: unknown } };
 }
+
+// ---------------------------------------------------------------------------
+// New validations
+// ---------------------------------------------------------------------------
+
+/**
+ * Verifica que la organización esté activa (status = 'active').
+ */
+export async function validateOrgActive(orgId: string): Promise<ValidationResult> {
+  try {
+    const supabase = await createSupabaseAdmin();
+    const { data: org } = await supabase
+      .from('organizations')
+      .select('status')
+      .eq('id', orgId)
+      .single();
+
+    if (!org) return { ok: false, error: 'Organización no encontrada.' };
+    if (org.status !== 'active') {
+      const reason = org.status === 'suspended' ? 'suspendida' : 'inactiva';
+      return {
+        ok: false,
+        error: `La cuenta de tu empresa está ${reason}. Contactá a Sheina para más información.`,
+      };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: true }; // en caso de error, no bloquear
+  }
+}
+
+/**
+ * Verifica si existe un pedido duplicado (draft) para la organización.
+ * Si existe, lo cancela silenciosamente y retorna el id/semana del draft cancelado,
+ * para que el webhook pueda informar al cliente.
+ */
+export async function validateNoDuplicate(orgId: string): Promise<DuplicateCheckResult> {
+  try {
+    const supabase = await createSupabaseAdmin();
+    const { data: order } = await supabase
+      .from('orders')
+      .select('id, week_label, total_units')
+      .eq('organization_id', orgId)
+      .eq('status', 'draft')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!order) return { ok: true };
+
+    // Cancel the existing draft so the new order can be created
+    await supabase.from('orders').update({ status: 'cancelled' }).eq('id', order.id);
+
+    return {
+      ok: true,
+      cancelledDraftId: order.id,
+      cancelledWeekLabel: order.week_label,
+    };
+  } catch {
+    return { ok: true };
+  }
+}
+
+// Alias — same logic, semantically named for Excel structure check
+export const validateExcelStructure = validateExcelFile;

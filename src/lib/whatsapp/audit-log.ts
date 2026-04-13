@@ -53,3 +53,24 @@ export async function logOut(
     console.error('AUDIT_LOG: failed to log outgoing message', err);
   }
 }
+
+/**
+ * Función unificada — import { logConversation } from '@/lib/whatsapp/audit-log'
+ */
+export async function logConversation(
+  direction: 'in' | 'out',
+  phone: string,
+  options: {
+    type?: MessageType | string;
+    body?: string;
+    mediaUrl?: string;
+    orderId?: string;
+    convState?: string;
+  } = {}
+): Promise<void> {
+  if (direction === 'in') {
+    await logIn(phone, (options.type ?? 'HELP') as MessageType, options.body ?? '', options.mediaUrl, options.orderId);
+  } else {
+    await logOut(phone, options.body ?? '', options.orderId, options.convState);
+  }
+}

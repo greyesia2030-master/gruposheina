@@ -8,70 +8,92 @@ const DAY_LABELS: Record<number, string> = {
   5: 'VIERNES',
 };
 
-function shortName(name: string, maxLen = 28): string {
+const DAY_SHORT: Record<number, string> = {
+  1: 'Lun',
+  2: 'Mar',
+  3: 'Mié',
+  4: 'Jue',
+  5: 'Vie',
+};
+
+function shortName(name: string, maxLen = 24): string {
   if (name.length <= maxLen) return name;
   return name.slice(0, maxLen - 3) + '...';
 }
 
 /**
- * Genera un resumen compacto del pedido para WhatsApp.
- * Diseñado para mantenerse ~900 chars en pedidos típicos.
- * Para pedidos grandes se usa sendLongWhatsAppMessage que hace splitting.
+ * Genera el resumen COMPACTO del pedido para WhatsApp.
+ *
+ * Formato:
+ *   📋 Pedido — SEMANA 4
+ *   Lun: 17 vnd | Mar: 43 vnd | Mié: 51 vnd
+ *   Jue: ⛱️ Feriado | Vie: 56 vnd
+ *   Total: 167 viandas
+ *
+ *   ⚠️ 2 días tienen totales que no cuadran
+ *
+ *   Respondé *confirmo* o *cancelar*
  */
-export function formatOrderSummary(orderData: ValidatedOrderData): string {
-  const lines: string[] = [];
+export function formatCompactSummary(orderData: ValidatedOrderData): string {
+  const parts: string[] = [];
 
-  lines.push(`📋 *Resumen — ${orderData.weekLabel}*`);
+  parts.push(`📋 *Pedido — ${orderData.weekLabel}*`);
 
-  let weekTotal = 0;
-
+  // Build one token per day
+  const dayTokens: string[] = [];
   for (const day of orderData.days) {
-    const activeOptions = day.options.filter((o) => o.mainQuantity > 0);
-    const dayLabel = DAY_LABELS[day.dayOfWeek] ?? day.dayName;
+    const short = DAY_SHORT[day.dayOfWeek] ?? String(day.dayOfWeek);
 
-    lines.push('');
-
-    if (day.totalUnits === 0 || activeOptions.length === 0) {
-      lines.push(`*${dayLabel}* — sin pedido`);
-      continue;
-    }
-
-    // Cabecera de día con total inline (ahorra una línea por día)
-    lines.push(`*${dayLabel}* — ${day.totalUnits} vnd`);
-
-    for (const opt of activeOptions) {
-      lines.push(`  ${opt.code}. ${shortName(opt.displayName)}: ${opt.mainQuantity}`);
-    }
-
-    weekTotal += day.totalUnits;
-  }
-
-  lines.push('');
-  lines.push(`*Total semanal: ${weekTotal} viandas*`);
-
-  // Anomalías: max 3, truncadas a 80 chars
-  if (orderData.anomalies.length > 0) {
-    lines.push('');
-    lines.push('⚠️ *Observaciones:*');
-    const shown = orderData.anomalies.slice(0, 3);
-    for (const anomaly of shown) {
-      lines.push(`  • ${anomaly.slice(0, 80)}`);
-    }
-    if (orderData.anomalies.length > 3) {
-      lines.push(`  • ...y ${orderData.anomalies.length - 3} más`);
+    if (day.totalUnits === 0) {
+      // Detect holiday from anomalies
+      const dayFull = DAY_LABELS[day.dayOfWeek] ?? '';
+      const isFeriado = orderData.anomalies.some((a) => {
+        const up = a.toUpperCase();
+        return (up.includes(dayFull) || up.includes(short.toUpperCase())) &&
+          /FERIADO|[^A-Z]F[^A-Z]?E[^A-Z]?R[^A-Z]?I[^A-Z]?A[^A-Z]?D[^A-Z]?O/i.test(a);
+      });
+      dayTokens.push(isFeriado ? `${short}: ⛱️ Feriado` : `${short}: —`);
+    } else {
+      dayTokens.push(`${short}: ${day.totalUnits} vnd`);
     }
   }
 
-  lines.push('');
-  lines.push('Respondé *confirmo* o *cancelar*');
+  // Layout: 3 days on first line, remaining on second
+  if (dayTokens.length <= 3) {
+    parts.push(dayTokens.join(' | '));
+  } else {
+    parts.push(dayTokens.slice(0, 3).join(' | '));
+    parts.push(dayTokens.slice(3).join(' | '));
+  }
 
-  return lines.join('\n');
+  parts.push(`*Total: ${orderData.totalUnits} viandas*`);
+
+  // Simplified warnings — max 2 lines, no technical details
+  const invalidDayCount = orderData.days.filter((d) =>
+    d.options.some((opt) => !opt.isValid)
+  ).length;
+
+  if (invalidDayCount > 0) {
+    parts.push('');
+    parts.push(
+      `⚠️ ${invalidDayCount} día${invalidDayCount > 1 ? 's tienen' : ' tiene'} totales que no cuadran`
+    );
+  } else if (orderData.anomalies.length > 0) {
+    parts.push('');
+    parts.push(
+      `⚠️ ${orderData.anomalies.length} observación${orderData.anomalies.length > 1 ? 'es' : ''} en el Excel`
+    );
+  }
+
+  parts.push('');
+  parts.push('Respondé *confirmo* o *cancelar*');
+
+  return parts.join('\n');
 }
 
 /**
- * Genera un resumen detallado del pedido con desglose por departamento.
- * Diseñado para la consulta de "detalle" o para el admin panel.
- * Más largo que formatOrderSummary — usar sendLongWhatsAppMessage.
+ * Genera un resumen DETALLADO con desglose por departamento.
+ * Para la consulta "detalle" o el admin panel.
  */
 export function formatOrderSummaryDetailed(orderData: ValidatedOrderData): string {
   const lines: string[] = [];
@@ -99,7 +121,7 @@ export function formatOrderSummaryDetailed(orderData: ValidatedOrderData): strin
         .map(([dept, qty]) => `${dept}:${qty}`)
         .join(' ');
       const deptsStr = depts ? ` _(${depts})_` : '';
-      lines.push(`  ${opt.code}. ${shortName(opt.displayName, 24)}: ${opt.mainQuantity}${deptsStr}`);
+      lines.push(`  ${opt.code}. ${shortName(opt.displayName)}: ${opt.mainQuantity}${deptsStr}`);
     }
 
     weekTotal += day.totalUnits;
@@ -118,3 +140,6 @@ export function formatOrderSummaryDetailed(orderData: ValidatedOrderData): strin
 
   return lines.join('\n');
 }
+
+// Backward-compat alias (older code imported this name)
+export const formatOrderSummary = formatCompactSummary;
