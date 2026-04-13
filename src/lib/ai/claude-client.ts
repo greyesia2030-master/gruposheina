@@ -21,9 +21,10 @@ function cleanJsonResponse(text: string): string {
 
 /**
  * Convierte ParsedWeek → ValidatedOrderData sin IA.
- * Usado como fallback si Claude falla o devuelve estructura incorrecta.
+ * Conversión directa y confiable — no llama a Claude.
+ * Exportado para que el webhook lo use directamente.
  */
-function convertWeekToValidated(week: ParsedWeek): ValidatedOrderData {
+export function convertWeekToValidated(week: ParsedWeek): ValidatedOrderData {
   const days: ValidatedDay[] = week.days.map((day) => ({
     dayOfWeek: day.dayOfWeek,
     dayName: day.dayName,
