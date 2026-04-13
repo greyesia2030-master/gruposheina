@@ -21,6 +21,26 @@ import { isWithinCutoff } from '@/lib/orders/cutoff';
 import { createSupabaseAdmin } from '@/lib/supabase/server';
 
 // ---------------------------------------------------------------------------
+// Rate limiter — module-level Map persists across warm invocations
+// ---------------------------------------------------------------------------
+
+const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
+const RATE_LIMIT_MAX       = 10;     // max requests per window per phone
+const phoneRateMap         = new Map<string, number[]>();
+
+function checkRateLimit(phone: string): boolean {
+  const now = Date.now();
+  const timestamps = (phoneRateMap.get(phone) ?? []).filter(
+    (t) => now - t < RATE_LIMIT_WINDOW_MS
+  );
+  if (timestamps.length >= RATE_LIMIT_MAX) return false;
+  phoneRateMap.set(phone, [...timestamps, now]);
+  // Evict oldest entry when map grows too large to prevent memory leak
+  if (phoneRateMap.size > 1000) phoneRateMap.delete(phoneRateMap.keys().next().value!);
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // Signature validation
 // ---------------------------------------------------------------------------
 
@@ -248,11 +268,12 @@ export async function POST(request: NextRequest) {
     const bodyText = await request.text();
     const params = new URLSearchParams(bodyText);
 
-    const rawPhone  = params.get('From') ?? '';
-    const rawBody   = params.get('Body') ?? '';
-    const numMedia  = parseInt(params.get('NumMedia') ?? '0', 10);
-    const mediaUrl  = params.get('MediaUrl0') ?? undefined;
-    const mediaType = params.get('MediaContentType0') ?? undefined;
+    const rawPhone   = params.get('From') ?? '';
+    const rawBody    = params.get('Body') ?? '';
+    const numMedia   = parseInt(params.get('NumMedia') ?? '0', 10);
+    const mediaUrl   = params.get('MediaUrl0') ?? undefined;
+    const mediaType  = params.get('MediaContentType0') ?? undefined;
+    const messageSid = params.get('MessageSid') ?? '';
 
     // 1. Validate Twilio signature
     if (!validateTwilioSignature(request, bodyText)) {
@@ -262,36 +283,49 @@ export async function POST(request: NextRequest) {
       return new NextResponse('Forbidden', { status: 403 });
     }
 
-    // 2. Classify message
+    // 2. Rate limit — silently drop if exceeded (don't reveal limit to attacker)
+    const phoneKey = rawPhone.replace(/^whatsapp:/i, '');
+    if (!checkRateLimit(phoneKey)) return xmlOk();
+
+    // 3. Classify message
     const msg = classifyMessage({ From: rawPhone, Body: rawBody, NumMedia: String(numMedia), MediaUrl0: mediaUrl, MediaContentType0: mediaType });
 
-    // 3. Log incoming (non-blocking)
+    // 4. MessageSid deduplication — if Twilio retries, skip re-processing
+    const supabase = await createSupabaseAdmin();
+    if (messageSid) {
+      const { count } = await supabase
+        .from('conversation_logs')
+        .select('id', { count: 'exact', head: true })
+        .eq('message_sid', messageSid);
+      if ((count ?? 0) > 0) return xmlOk(); // already processed
+    }
+
+    // 5. Log incoming (non-blocking)
     void logConversation('in', msg.phone, {
       type: msg.type,
       body: msg.text,
       mediaUrl: msg.mediaUrl,
+      messageSid: messageSid || undefined,
     });
 
-    // 4. Identify client
+    // 6. Identify client
     const client = await identifyClient(msg.phone);
     if (!client || !client.organization_id) {
       await reply(msg.phone, responses.notRegistered(msg.phone));
       return xmlOk();
     }
 
-    // 5. Validate org is active
+    // 7. Validate org is active
     const orgCheck = await validateOrgActive(client.organization_id);
     if (!orgCheck.ok) {
       await reply(msg.phone, responses.orgInactive());
       return xmlOk();
     }
 
-    // 6. Get client conversation context
+    // 8. Get client conversation context
     const ctx = await getClientContext(client.organization_id);
 
-    const supabase = await createSupabaseAdmin();
-
-    // 7. Dispatch by message type
+    // 9. Dispatch by message type
     switch (msg.type) {
 
       // ── Excel válido ──────────────────────────────────────────────────────

@@ -10,7 +10,8 @@ export async function logIn(
   type: MessageType,
   body: string,
   mediaUrl?: string,
-  orderId?: string
+  orderId?: string,
+  messageSid?: string
 ): Promise<void> {
   try {
     const supabase = await createSupabaseAdmin();
@@ -22,6 +23,7 @@ export async function logIn(
       media_url: mediaUrl ?? null,
       order_id: orderId ?? null,
       conv_state: null,
+      message_sid: messageSid ?? null,
     });
   } catch (err) {
     console.error('AUDIT_LOG: failed to log incoming message', err);
@@ -66,10 +68,11 @@ export async function logConversation(
     mediaUrl?: string;
     orderId?: string;
     convState?: string;
+    messageSid?: string;
   } = {}
 ): Promise<void> {
   if (direction === 'in') {
-    await logIn(phone, (options.type ?? 'HELP') as MessageType, options.body ?? '', options.mediaUrl, options.orderId);
+    await logIn(phone, (options.type ?? 'HELP') as MessageType, options.body ?? '', options.mediaUrl, options.orderId, options.messageSid);
   } else {
     await logOut(phone, options.body ?? '', options.orderId, options.convState);
   }
