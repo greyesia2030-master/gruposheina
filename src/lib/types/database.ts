@@ -17,6 +17,8 @@ export interface Organization {
   name: string;
   cuit: string | null;
   contact_phone: string | null;
+  email: string | null;
+  delivery_address: string | null;
   cutoff_time: string; // HH:MM
   cutoff_days_before: number;
   departments: string[];

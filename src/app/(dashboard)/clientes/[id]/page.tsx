@@ -11,7 +11,10 @@ import { canManageClients } from "@/lib/permissions";
 import { formatART } from "@/lib/utils/timezone";
 import { AddAuthorizedPhone } from "./add-authorized-phone";
 import { RemoveAuthorizedPhone } from "./remove-authorized-phone";
-import type { OrderStatus } from "@/lib/types/database";
+import { EditOrgForm } from "./edit-org-form";
+import { AddUserButton } from "./add-user-button";
+import { DeactivateButton } from "./deactivate-button";
+import type { OrderStatus, Organization } from "@/lib/types/database";
 import { MessageSquare, Users, Phone, Building2, Clock, ShoppingBag } from "lucide-react";
 
 const STATUS_VARIANT: Record<string, "success" | "warning" | "default"> = {
@@ -85,9 +88,14 @@ export default async function ClienteDetailPage({
           { label: org.name },
         ]}
         action={
-          <Badge variant={STATUS_VARIANT[org.status] ?? "default"}>
-            {STATUS_LABELS[org.status] ?? org.status}
-          </Badge>
+          <div className="flex items-center gap-3">
+            <Badge variant={STATUS_VARIANT[org.status] ?? "default"}>
+              {STATUS_LABELS[org.status] ?? org.status}
+            </Badge>
+            {canManage && org.status !== "inactive" && (
+              <DeactivateButton orgId={id} />
+            )}
+          </div>
         }
       />
 
@@ -111,33 +119,37 @@ export default async function ClienteDetailPage({
 
       {/* ── TAB: Información ── */}
       {tab === "info" && (
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-4">
           <Card>
-            <div className="divide-y divide-border">
-              {[
-                ["Nombre",    org.name],
-                ["CUIT",      org.cuit ?? "—"],
-                ["Teléfono",  org.contact_phone ?? "—"],
-                ["Estado",    STATUS_LABELS[org.status] ?? org.status],
-              ].map(([label, value]) => (
-                <div key={label} className="flex justify-between px-4 py-3 text-sm">
-                  <span className="text-text-secondary">{label}</span>
-                  <span className="font-medium">{value}</span>
+            <div className="p-4">
+              {canManage ? (
+                <EditOrgForm org={org as Organization} />
+              ) : (
+                <div className="divide-y divide-border">
+                  {[
+                    ["Nombre",    org.name],
+                    ["CUIT",      org.cuit ?? "—"],
+                    ["Teléfono",  org.contact_phone ?? "—"],
+                    ["Email",     org.email ?? "—"],
+                    ["Dirección", org.delivery_address ?? "—"],
+                    ["Precio/vianda", `$${org.price_per_unit}`],
+                  ].map(([label, value]) => (
+                    <div key={label} className="flex justify-between px-0 py-3 text-sm">
+                      <span className="text-text-secondary">{label}</span>
+                      <span className="font-medium">{value}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           </Card>
           <Card>
             <div className="divide-y divide-border">
               <div className="flex items-center gap-2 px-4 py-3">
                 <Clock className="h-4 w-4 text-text-secondary" />
-                <span className="text-sm text-text-secondary">Corte</span>
-                <span className="ml-auto text-sm font-medium">
-                  {org.cutoff_time} ({org.cutoff_days_before}d antes)
-                </span>
+                <span className="text-sm text-text-secondary">Departamentos</span>
               </div>
               <div className="px-4 py-3">
-                <p className="mb-2 text-sm text-text-secondary">Departamentos</p>
                 <div className="flex flex-wrap gap-1">
                   {(org.departments ?? []).map((d: string) => (
                     <Badge key={d} variant="info">{d}</Badge>
@@ -180,6 +192,12 @@ export default async function ClienteDetailPage({
 
       {/* ── TAB: Usuarios ── */}
       {tab === "users" && (
+        <div className="space-y-4">
+          {canManage && (
+            <div className="flex justify-end">
+              <AddUserButton orgId={id} />
+            </div>
+          )}
         <Card>
           {users.length === 0 ? (
             <p className="p-8 text-center text-text-secondary">Sin usuarios vinculados</p>
@@ -214,6 +232,7 @@ export default async function ClienteDetailPage({
             </div>
           )}
         </Card>
+        </div>
       )}
 
       {/* ── TAB: Pedidos ── */}

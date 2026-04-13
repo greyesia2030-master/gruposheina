@@ -1,11 +1,12 @@
 export const dynamic = "force-dynamic";
 
-import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import type { Organization } from "@/lib/types/database";
+import { NewClientButton } from "./new-client-button";
+import { ClickableRow } from "./clickable-row";
 
 const STATUS_VARIANT: Record<string, "success" | "warning" | "default"> = {
   active:    "success",
@@ -40,7 +41,7 @@ export default async function ClientesPage() {
 
   return (
     <div>
-      <PageHeader title="Clientes" />
+      <PageHeader title="Clientes" action={<NewClientButton />} />
 
       {orgs && orgs.length > 0 ? (
         <Card>
@@ -60,15 +61,8 @@ export default async function ClientesPage() {
                 {orgs.map((org) => {
                   const count = activeOrderCount[org.id] ?? 0;
                   return (
-                    <tr key={org.id} className="border-b border-border last:border-0 hover:bg-surface-hover">
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/clientes/${org.id}`}
-                          className="font-medium hover:text-primary"
-                        >
-                          {org.name}
-                        </Link>
-                      </td>
+                    <ClickableRow key={org.id} href={`/clientes/${org.id}`} className="border-b border-border last:border-0 hover:bg-surface-hover">
+                      <td className="px-4 py-3 font-medium">{org.name}</td>
                       <td className="px-4 py-3 text-text-secondary">{org.cuit ?? "—"}</td>
                       <td className="px-4 py-3 font-mono text-text-secondary">{org.contact_phone ?? "—"}</td>
                       <td className="px-4 py-3 text-text-secondary">
@@ -76,9 +70,7 @@ export default async function ClientesPage() {
                       </td>
                       <td className="px-4 py-3 text-center">
                         {count > 0 ? (
-                          <Link href={`/clientes/${org.id}?tab=orders`}>
-                            <Badge variant="primary">{count}</Badge>
-                          </Link>
+                          <Badge variant="primary">{count}</Badge>
                         ) : (
                           <span className="text-text-secondary">—</span>
                         )}
@@ -88,7 +80,7 @@ export default async function ClientesPage() {
                           {STATUS_LABELS[org.status] ?? org.status}
                         </Badge>
                       </td>
-                    </tr>
+                    </ClickableRow>
                   );
                 })}
               </tbody>
