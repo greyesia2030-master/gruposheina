@@ -71,7 +71,6 @@ async function processExcelBackground(
   orgName: string
 ) {
   try {
-    console.log('EXCEL: downloading...');
     const fileRes = await fetch(mediaUrl, {
       headers: {
         Authorization: `Basic ${Buffer.from(
@@ -80,11 +79,7 @@ async function processExcelBackground(
       },
     });
     const buffer = Buffer.from(await fileRes.arrayBuffer());
-    console.log('EXCEL: downloaded', buffer.length, 'bytes');
-
-    console.log('EXCEL: parsing with sheina-parser...');
     const parseResult = await parseSheinaExcel(buffer);
-    console.log('EXCEL: parsed,', parseResult.errors.length, 'errors,', parseResult.weeks?.length ?? 0, 'weeks');
 
     if (parseResult.errors.length > 0) {
       await reply(phone, responses.parseError(parseResult.errors), undefined, 'idle');
@@ -108,14 +103,11 @@ async function processExcelBackground(
       }
     }
 
-    console.log('EXCEL: calling Claude API...');
     const validatedData = await parseExcelWithAI(parseResult);
-    console.log('EXCEL: Claude ok — week:', validatedData.weekLabel, 'units:', validatedData.totalUnits);
 
     // Check for already-confirmed order this week — warn but don't block
     const confirmedCheck = await checkConfirmedOrderForWeek(orgId, validatedData.weekLabel);
     if (confirmedCheck.exists) {
-      console.log(`EXCEL: confirmed order exists for week "${validatedData.weekLabel}" — warning user`);
       await reply(
         phone,
         `⚠️ Ya tenés un pedido *confirmado* para *${validatedData.weekLabel}* (${confirmedCheck.totalUnits} viandas).\n\nIgual creo un borrador nuevo. Hablá con el equipo de Sheina si necesitás modificarlo.`,
@@ -167,7 +159,6 @@ async function processExcelBackground(
     if (orderError || !order) {
       throw new Error(`Error creando pedido: ${orderError?.message}`);
     }
-    console.log('EXCEL: order created', order.id);
 
     // Create order lines
     const lines = validatedData.days.flatMap((day) =>
@@ -185,7 +176,6 @@ async function processExcelBackground(
     );
     if (lines.length > 0) {
       await supabase.from('order_lines').insert(lines);
-      console.log('EXCEL:', lines.length, 'lines created');
     }
 
     // Upload original file to Storage (non-blocking)
@@ -220,10 +210,8 @@ async function processExcelBackground(
 
     // Send compact summary and update conversation state
     const summary = formatCompactSummary(validatedData, orgName);
-    console.log('EXCEL: summary', summary.length, 'chars');
     await replyLong(phone, summary, order.id, 'awaiting_confirmation');
     await setState(phone, 'awaiting_confirmation', order.id);
-    console.log('EXCEL: done — state = awaiting_confirmation');
 
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -250,13 +238,6 @@ export async function POST(request: NextRequest) {
     const mediaUrl  = params.get('MediaUrl0') ?? undefined;
     const mediaType = params.get('MediaContentType0') ?? undefined;
 
-    console.log('WEBHOOK INCOMING:', JSON.stringify({
-      from: rawPhone,
-      body: rawBody.slice(0, 80),
-      numMedia,
-      mediaType: mediaType ?? null,
-    }));
-
     // 1. Validate Twilio signature
     if (!validateTwilioSignature(request, bodyText)) {
       const hasSignature = !!request.headers.get('x-twilio-signature');
@@ -267,7 +248,6 @@ export async function POST(request: NextRequest) {
 
     // 2. Classify message
     const msg = classifyMessage({ From: rawPhone, Body: rawBody, NumMedia: String(numMedia), MediaUrl0: mediaUrl, MediaContentType0: mediaType });
-    console.log('WEBHOOK classified:', msg.type, '| phone:', msg.phone);
 
     // 3. Log incoming (non-blocking)
     void logConversation('in', msg.phone, {

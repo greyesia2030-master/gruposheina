@@ -375,8 +375,6 @@ async function consumeInventoryForOrder(orderId: string, actorId: string): Promi
   if (errors.length > 0) {
     console.error("[INVENTORY] Fallo parcial al consumir stock:", errors);
     issues.push(...errors);
-  } else {
-    console.log(`[INVENTORY] Consumidos ${Object.keys(consumptionMap).length} insumos para pedido ${orderId.slice(0, 8)}`);
   }
 
   return issues;

@@ -58,18 +58,15 @@ function normalizeClaudeResponse(raw: unknown, fallbackWeek: ParsedWeek): Valida
 
     // Caso 1: formato correcto
     if ('weekLabel' in obj && 'days' in obj && Array.isArray(obj.days)) {
-      console.log('EXCEL: Claude returned correct ValidatedOrderData format');
       return obj as unknown as ValidatedOrderData;
     }
 
     // Caso 2: Claude devolvió { weeks: [...] } (input echoed back)
     if ('weeks' in obj && Array.isArray(obj.weeks) && obj.weeks.length > 0) {
-      console.log('EXCEL: Claude returned input format (weeks[]), falling back to direct conversion');
       return convertWeekToValidated(obj.weeks[0] as ParsedWeek);
     }
   }
 
-  console.log('EXCEL: Claude returned unexpected structure, falling back to direct conversion');
   return convertWeekToValidated(fallbackWeek);
 }
 
@@ -103,8 +100,6 @@ export async function parseExcelWithAI(rawData: ParseResult): Promise<ValidatedO
     if (!textBlock || textBlock.type !== 'text') {
       throw new Error('Respuesta inesperada de Claude: sin contenido de texto');
     }
-
-    console.log('EXCEL: Claude raw response preview:', textBlock.text.slice(0, 100));
 
     try {
       claudeRaw = JSON.parse(cleanJsonResponse(textBlock.text));

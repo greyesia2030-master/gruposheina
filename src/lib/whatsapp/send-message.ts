@@ -13,20 +13,11 @@ const FROM = rawFrom.startsWith('whatsapp:') ? rawFrom : `whatsapp:${rawFrom}`;
  */
 export async function sendWhatsAppMessage(to: string, body: string): Promise<string> {
   const normalizedTo = to.startsWith('whatsapp:') ? to : `whatsapp:${to}`;
-  console.log('TWILIO SEND:', JSON.stringify({
-    from: FROM,
-    to: normalizedTo,
-    envRaw: process.env.TWILIO_WHATSAPP_FROM ?? '(not set, using default)',
-    hasSid: !!process.env.TWILIO_ACCOUNT_SID,
-    hasToken: !!process.env.TWILIO_AUTH_TOKEN,
-    bodyPreview: body.substring(0, 50),
-  }));
   const message = await client.messages.create({
     from: FROM,
     to: normalizedTo,
     body,
   });
-  console.log('TWILIO SEND OK:', message.sid);
   return message.sid;
 }
 
@@ -74,8 +65,6 @@ export async function sendLongWhatsAppMessage(to: string, body: string): Promise
     }
   }
   if (current) chunks.push(current);
-
-  console.log(`TWILIO SPLIT: message too long (${body.length} chars), sending as ${chunks.length} chunks`);
 
   const sids: string[] = [];
   for (const chunk of chunks) {
