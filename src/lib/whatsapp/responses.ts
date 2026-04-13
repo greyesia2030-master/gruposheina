@@ -50,7 +50,7 @@ export const R = {
 
   /** Pedido confirmado exitosamente */
   confirmSuccess: (units: number, week: string) =>
-    `✅ ¡Pedido confirmado!\nTotal: *${units} viandas* — ${week}\n\nSi necesitás hacer cambios antes del corte, enviá un nuevo Excel.`,
+    `✅ ¡Pedido confirmado! El equipo de Sheina lo revisará.\n\nTotal: *${units} viandas* — ${week}\n\nSi necesitás hacer cambios antes del corte, enviá un nuevo Excel.`,
 
   /** Sin pedido borrador para confirmar */
   noOrderToConfirm: () =>

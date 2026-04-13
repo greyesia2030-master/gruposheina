@@ -7,8 +7,11 @@ import { requireUser } from "@/lib/auth/require-user";
 import { canViewSalePrice } from "@/lib/permissions";
 import { DAY_NAMES } from "@/lib/types/orders";
 import { isWithinCutoff } from "@/lib/orders/cutoff";
+import { checkStockForOrder } from "@/app/actions/orders";
 import { OrderActions } from "./order-actions";
 import { RetryInventoryButton } from "./retry-inventory-button";
+import { SendReminderButton } from "./send-reminder-button";
+import { StockCheckPanel } from "./stock-check-panel";
 import { OrderTimeline } from "./order-timeline";
 import { OrderLinesEditor } from "./order-lines-editor";
 import {
@@ -129,6 +132,16 @@ export default async function PedidoDetailPage({
     ["in_production", "delivered"].includes(order.status) &&
     movementsCount === 0;
 
+  // Stock check para pedidos confirmados (pre-producción) — solo admin
+  const stockCheck =
+    hasRole(currentUser.role, "admin") && order.status === "confirmed"
+      ? await checkStockForOrder(order.id)
+      : undefined;
+
+  // Botón recordatorio — solo admin, solo borradores
+  const canSendReminder =
+    hasRole(currentUser.role, "admin") && order.status === "draft";
+
   return (
     <div>
       <PageHeader
@@ -139,13 +152,13 @@ export default async function PedidoDetailPage({
         ]}
         action={
           <div className="flex flex-wrap items-center gap-2">
-            {canRetryInventory && (
-              <RetryInventoryButton orderId={order.id} />
-            )}
+            {canSendReminder && <SendReminderButton orderId={order.id} />}
+            {canRetryInventory && <RetryInventoryButton orderId={order.id} />}
             <OrderActions
               orderId={order.id}
               status={order.status as OrderStatus}
               isWithinCutoff={withinCutoff}
+              stockCheck={stockCheck}
             />
           </div>
         }
@@ -214,6 +227,9 @@ export default async function PedidoDetailPage({
           </Card>
         )}
       </div>
+
+      {/* Stock check para pedidos confirmados */}
+      {stockCheck && <StockCheckPanel result={stockCheck} />}
 
       {/* Detalle de líneas (editable o solo lectura) */}
       <div className="mb-8">

@@ -127,3 +127,59 @@ export function formatOrderSummaryDetailed(orderData: ValidatedOrderData): strin
 
 // Backward-compat alias (older code imported this name)
 export const formatOrderSummary = formatCompactSummary;
+
+/**
+ * Genera el resumen combinado cuando el Excel tiene múltiples semanas.
+ *
+ * Formato:
+ *   📋 Pedido de *Org* — 2 semanas
+ *
+ *   SEMANA 4: Lun: 70 | Mar: 70 | Mié: 70
+ *   Jue: ⛱️ Feriado | Vie: ⛱️ Feriado — Total: 210 viandas
+ *
+ *   SEMANA 5: Lun: 50 | Mar: 60 | Mié: 55 | Jue: 58 | Vie: 57 — Total: 280 viandas
+ *
+ *   *Total general: 490 viandas*
+ *   Respondé *confirmo* o *cancelar*
+ */
+export function formatMultiWeekSummary(
+  weeks: Array<{ weekLabel: string; data: Parameters<typeof formatCompactSummary>[0] }>,
+  orgName?: string
+): string {
+  const parts: string[] = [];
+  const orgPart = orgName ? `de *${orgName}* — ` : '— ';
+  parts.push(`📋 Pedido ${orgPart}${weeks.length} semana${weeks.length > 1 ? 's' : ''}`);
+
+  let grandTotal = 0;
+
+  for (const week of weeks) {
+    const { data } = week;
+    parts.push('');
+
+    const dayTokens: string[] = [];
+    for (const day of data.days) {
+      const short = DAY_SHORT[day.dayOfWeek] ?? String(day.dayOfWeek);
+      if (day.totalUnits === 0) {
+        const dayFull = DAY_LABELS[day.dayOfWeek] ?? '';
+        const isFeriado = data.anomalies.some((a) => {
+          const up = a.toUpperCase();
+          return (up.includes(dayFull) || up.includes(short.toUpperCase())) && up.includes('FERIADO');
+        });
+        dayTokens.push(isFeriado ? `${short}: ⛱️ Feriado` : `${short}: —`);
+      } else {
+        dayTokens.push(`${short}: ${day.totalUnits}`);
+      }
+    }
+
+    const weekLine = dayTokens.join(' | ');
+    parts.push(`*${data.weekLabel}:* ${weekLine} — Total: ${data.totalUnits} viandas`);
+    grandTotal += data.totalUnits;
+  }
+
+  parts.push('');
+  parts.push(`*Total general: ${grandTotal} viandas*`);
+  parts.push('');
+  parts.push('Respondé *confirmo* o *cancelar*');
+
+  return parts.join('\n');
+}

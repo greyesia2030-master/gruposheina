@@ -8,6 +8,7 @@ import { transitionOrder } from "@/lib/orders/state-machine";
 import { isWithinCutoff } from "@/lib/orders/cutoff";
 import { createOrderEvent } from "@/lib/orders/events";
 import { registerMovement } from "@/lib/inventory/movements";
+import { sendWhatsAppMessage } from "@/lib/whatsapp/send-message";
 import type { OrderStatus } from "@/lib/types/database";
 
 export type ActionResult<T = void> =
@@ -430,4 +431,158 @@ export async function retryInventoryConsumption(
   revalidatePath(`/pedidos/${orderId}`);
   revalidatePath("/inventario");
   return { ok: true, consumed: newCount ?? 0 };
+}
+
+// ============================================================================
+// checkStockForOrder — validación de stock antes de pasar a producción
+// ============================================================================
+
+export interface StockShortage {
+  inventoryItemId: string;
+  name: string;
+  unit: string;
+  needed: number;
+  available: number;
+  deficit: number;
+}
+
+export interface StockCheckResult {
+  canProduce: boolean;
+  shortages: StockShortage[];
+  checkedItems: number;
+}
+
+export async function checkStockForOrder(orderId: string): Promise<StockCheckResult> {
+  const empty: StockCheckResult = { canProduce: true, shortages: [], checkedItems: 0 };
+  const supabase = await createSupabaseAdmin();
+
+  const { data: order } = await supabase
+    .from("orders")
+    .select("menu_id")
+    .eq("id", orderId)
+    .single();
+  if (!order?.menu_id) return empty;
+
+  const { data: lines } = await supabase
+    .from("order_lines")
+    .select("option_code, day_of_week, quantity")
+    .eq("order_id", orderId);
+  if (!lines || lines.length === 0) return empty;
+
+  // Aggregate quantities per (option_code, day_of_week)
+  const totalsPerOption: Record<string, number> = {};
+  for (const line of lines) {
+    const key = `${line.option_code}_${line.day_of_week}`;
+    totalsPerOption[key] = (totalsPerOption[key] ?? 0) + (line.quantity ?? 0);
+  }
+
+  const uniqueOptions = Object.entries(totalsPerOption).filter(([, qty]) => qty > 0);
+  if (uniqueOptions.length === 0) return empty;
+
+  // Get recipe_version_id per option from menu_items
+  const recipeVersionMap: Record<string, string> = {};
+  for (const [key] of uniqueOptions) {
+    const [optCode, dayStr] = key.split("_");
+    const { data: menuItem } = await supabase
+      .from("menu_items")
+      .select("recipe_version_id")
+      .eq("menu_id", order.menu_id)
+      .eq("option_code", optCode)
+      .eq("day_of_week", parseInt(dayStr, 10))
+      .maybeSingle();
+    if (menuItem?.recipe_version_id) recipeVersionMap[key] = menuItem.recipe_version_id;
+  }
+
+  const recipeVersionIds = [...new Set(Object.values(recipeVersionMap))];
+  if (recipeVersionIds.length === 0) return empty;
+
+  const { data: ingredients } = await supabase
+    .from("recipe_ingredients")
+    .select("recipe_version_id, inventory_item_id, quantity")
+    .in("recipe_version_id", recipeVersionIds);
+  if (!ingredients || ingredients.length === 0) return empty;
+
+  // Calculate total needed per inventory item
+  const neededMap: Record<string, number> = {};
+  for (const [key, totalUnits] of uniqueOptions) {
+    const rvId = recipeVersionMap[key];
+    if (!rvId) continue;
+    for (const ing of ingredients.filter((i) => i.recipe_version_id === rvId)) {
+      neededMap[ing.inventory_item_id] = (neededMap[ing.inventory_item_id] ?? 0) + ing.quantity * totalUnits;
+    }
+  }
+
+  const itemIds = Object.keys(neededMap);
+  if (itemIds.length === 0) return empty;
+
+  const { data: items } = await supabase
+    .from("inventory_items")
+    .select("id, name, unit, current_stock")
+    .in("id", itemIds);
+
+  const shortages: StockShortage[] = [];
+  for (const item of items ?? []) {
+    const needed = neededMap[item.id] ?? 0;
+    if (needed > (item.current_stock ?? 0)) {
+      shortages.push({
+        inventoryItemId: item.id,
+        name: item.name,
+        unit: item.unit,
+        needed,
+        available: item.current_stock ?? 0,
+        deficit: needed - (item.current_stock ?? 0),
+      });
+    }
+  }
+
+  return { canProduce: shortages.length === 0, shortages, checkedItems: itemIds.length };
+}
+
+// ============================================================================
+// sendReminderToClient — WhatsApp recordatorio para pedidos en borrador
+// ============================================================================
+
+export async function sendReminderToClient(orderId: string): Promise<ActionResult> {
+  const auth = await handleAuth();
+  if (!auth.ok) return auth;
+
+  const supabase = await createSupabaseAdmin();
+
+  const { data: order } = await supabase
+    .from("orders")
+    .select("week_label, total_units, status, organization_id")
+    .eq("id", orderId)
+    .single();
+  if (!order) return fail("Pedido no encontrado");
+  if (order.status !== "draft") return fail("Solo se puede enviar recordatorio a pedidos en borrador");
+
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("contact_phone, authorized_phones")
+    .eq("id", order.organization_id)
+    .single();
+
+  const phones = org?.authorized_phones as string[] | null;
+  const phone = org?.contact_phone ?? phones?.[0] ?? null;
+  if (!phone) return fail("La organización no tiene teléfono de contacto registrado");
+
+  const message =
+    `⏰ *Recordatorio de Grupo Sheina:* Tenés un pedido pendiente de confirmar ` +
+    `para *${order.week_label}* (${order.total_units} viandas).\n\n` +
+    `Respondé *confirmo* para confirmarlo o *cancelar* para anularlo.`;
+
+  try {
+    await sendWhatsAppMessage(phone, message);
+    await createOrderEvent({
+      orderId,
+      eventType: "override",
+      actorId: auth.user.id,
+      actorRole: "admin",
+      payload: { action: "reminder_sent", phone },
+    });
+    revalidatePath(`/pedidos/${orderId}`);
+    return ok(undefined);
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : "Error enviando recordatorio");
+  }
 }

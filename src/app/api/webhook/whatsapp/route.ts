@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import { classifyMessage } from '@/lib/whatsapp/classify-message';
 import { identifyClient } from '@/lib/whatsapp/receive-message';
 import { sendWhatsAppMessage, sendLongWhatsAppMessage } from '@/lib/whatsapp/send-message';
-import { formatCompactSummary, formatOrderSummaryDetailed } from '@/lib/whatsapp/format-summary';
+import { formatCompactSummary, formatMultiWeekSummary, formatOrderSummaryDetailed } from '@/lib/whatsapp/format-summary';
 import { responses } from '@/lib/whatsapp/responses';
 import { logConversation } from '@/lib/whatsapp/audit-log';
 import { getClientContext, setState } from '@/lib/whatsapp/conversation-state';
@@ -63,6 +63,26 @@ async function replyLong(phone: string, text: string, orderId?: string, convStat
 // Background Excel processing
 // ---------------------------------------------------------------------------
 
+/** Intenta asociar una semana con su menú publicado por fecha o cae al más reciente. */
+function findMenuIdForWeek(
+  weekLabel: string,
+  menus: { id: string; week_start: string; week_end: string }[]
+): string | null {
+  if (menus.length === 0) return null;
+  // Try to parse "DD.MM AL DD.MM" sheet-name format
+  const m = weekLabel.match(/(\d{1,2})[./](\d{1,2})\s*AL\s*(\d{1,2})[./](\d{1,2})/i);
+  if (m) {
+    const year = new Date().getFullYear();
+    const startDate = `${year}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+    const found = menus.find((wm) => wm.week_start === startDate);
+    if (found) return found.id;
+  }
+  // Fall back: current week → latest
+  const today = new Date().toISOString().slice(0, 10);
+  const current = menus.find((wm) => wm.week_start <= today && wm.week_end >= today);
+  return (current ?? menus[0]).id;
+}
+
 async function processExcelBackground(
   phone: string,
   mediaUrl: string,
@@ -87,84 +107,95 @@ async function processExcelBackground(
       return;
     }
 
-    const validatedData = await parseExcelWithAI(parseResult);
-
-    // Check for already-confirmed order this week — warn but don't block
-    const confirmedCheck = await checkConfirmedOrderForWeek(orgId, validatedData.weekLabel);
-    if (confirmedCheck.exists) {
-      await reply(
-        phone,
-        `⚠️ Ya tenés un pedido *confirmado* para *${validatedData.weekLabel}* (${confirmedCheck.totalUnits} viandas).\n\nIgual creo un borrador nuevo. Hablá con el equipo de Sheina si necesitás modificarlo.`,
-        confirmedCheck.orderId
-      );
+    // Skip weeks where every day has totalUnits = 0 (all holidays)
+    const validWeeks = parseResult.weeks.filter(
+      (w) => w.days.reduce((s, d) => s + d.totalUnits, 0) > 0
+    );
+    if (validWeeks.length === 0) {
+      await reply(phone, '📋 El Excel solo contiene semanas de feriado, no se crearon pedidos.', undefined, 'idle');
+      await setState(phone, 'idle');
+      return;
     }
 
     const supabase = await createSupabaseAdmin();
 
-    // Find current published menu
-    const { data: menus } = await supabase
-      .from('weekly_menus')
-      .select('id, week_start, week_end')
-      .eq('status', 'published')
-      .order('week_start', { ascending: false })
-      .limit(5);
-
-    let menuId: string | null = null;
-    if (menus && menus.length > 0) {
-      const today = new Date().toISOString().slice(0, 10);
-      const current = menus.find((m) => m.week_start <= today && m.week_end >= today);
-      menuId = (current ?? menus[0]).id;
-    }
-
-    // Price per unit for total_amount calculation
-    const { data: orgData } = await supabase
-      .from('organizations')
-      .select('price_per_unit')
-      .eq('id', orgId)
-      .single();
+    // Load all published menus (for week matching) + org price
+    const [{ data: menus }, { data: orgData }] = await Promise.all([
+      supabase
+        .from('weekly_menus')
+        .select('id, week_start, week_end')
+        .eq('status', 'published')
+        .order('week_start', { ascending: false })
+        .limit(10),
+      supabase.from('organizations').select('price_per_unit').eq('id', orgId).single(),
+    ]);
     const pricePerUnit = (orgData?.price_per_unit as number | null) ?? 0;
 
-    // Create order
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .insert({
-        organization_id: orgId,
-        menu_id: menuId,
-        week_label: validatedData.weekLabel,
-        status: 'draft',
-        source: 'whatsapp_excel',
-        total_units: validatedData.totalUnits,
-        total_amount: pricePerUnit > 0 ? validatedData.totalUnits * pricePerUnit : 0,
-        ai_parsing_log: validatedData as unknown as Record<string, unknown>,
-      })
-      .select()
-      .single();
+    // Process each week independently
+    const createdOrders: Array<{ weekLabel: string; totalUnits: number; orderId: string; validatedData: Awaited<ReturnType<typeof parseExcelWithAI>> }> = [];
 
-    if (orderError || !order) {
-      throw new Error(`Error creando pedido: ${orderError?.message}`);
+    for (const week of validWeeks) {
+      const singleWeekResult = { weeks: [week], errors: [] as string[], warnings: [] as string[] };
+      const validatedData = await parseExcelWithAI(singleWeekResult);
+
+      // Warn if a confirmed order already exists for this week (non-blocking)
+      const confirmedCheck = await checkConfirmedOrderForWeek(orgId, validatedData.weekLabel);
+      if (confirmedCheck.exists) {
+        await reply(
+          phone,
+          `⚠️ Ya tenés un pedido *confirmado* para *${validatedData.weekLabel}* (${confirmedCheck.totalUnits} viandas). Igual creo un borrador nuevo.`,
+          confirmedCheck.orderId
+        );
+      }
+
+      const menuId = findMenuIdForWeek(week.sheetName, menus ?? []);
+
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .insert({
+          organization_id: orgId,
+          menu_id: menuId,
+          week_label: validatedData.weekLabel,
+          status: 'draft',
+          source: 'whatsapp_excel',
+          total_units: validatedData.totalUnits,
+          total_amount: pricePerUnit > 0 ? validatedData.totalUnits * pricePerUnit : 0,
+          ai_parsing_log: validatedData as unknown as Record<string, unknown>,
+        })
+        .select()
+        .single();
+
+      if (orderError || !order) throw new Error(`Error creando pedido ${validatedData.weekLabel}: ${orderError?.message}`);
+
+      const lines = validatedData.days.flatMap((day) =>
+        day.options.flatMap((opt) =>
+          Object.entries(opt.departments).map(([dept, qty]) => ({
+            order_id: order.id,
+            day_of_week: day.dayOfWeek,
+            department: dept,
+            quantity: qty,
+            unit_price: 0,
+            option_code: opt.code,
+            display_name: opt.displayName,
+          }))
+        )
+      );
+      if (lines.length > 0) await supabase.from('order_lines').insert(lines);
+
+      await createOrderEvent({
+        orderId: order.id,
+        eventType: 'created',
+        actorId: clientId,
+        actorRole: 'client',
+        payload: { source: 'whatsapp_excel', totalUnits: validatedData.totalUnits },
+      });
+
+      createdOrders.push({ weekLabel: validatedData.weekLabel, totalUnits: validatedData.totalUnits, orderId: order.id, validatedData });
     }
 
-    // Create order lines
-    const lines = validatedData.days.flatMap((day) =>
-      day.options.flatMap((opt) =>
-        Object.entries(opt.departments).map(([dept, qty]) => ({
-          order_id: order.id,
-          day_of_week: day.dayOfWeek,
-          department: dept,
-          quantity: qty,
-          unit_price: 0,
-          option_code: opt.code,
-          display_name: opt.displayName,
-        }))
-      )
-    );
-    if (lines.length > 0) {
-      await supabase.from('order_lines').insert(lines);
-    }
-
-    // Upload original file to Storage (non-blocking)
+    // Upload file to storage once (associated to first order)
     try {
-      const storagePath = `${orgId}/${order.id}/original.xlsx`;
+      const storagePath = `${orgId}/${createdOrders[0].orderId}/original.xlsx`;
       const { error: uploadError } = await supabase.storage
         .from('order-files')
         .upload(storagePath, buffer, {
@@ -176,26 +207,27 @@ async function processExcelBackground(
           .from('order-files')
           .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
         if (urlData) {
-          await supabase.from('orders').update({ original_file_url: urlData.signedUrl }).eq('id', order.id);
+          await supabase.from('orders').update({ original_file_url: urlData.signedUrl }).eq('id', createdOrders[0].orderId);
         }
       }
     } catch (storageErr) {
       console.error('EXCEL: storage upload error (non-fatal):', storageErr);
     }
 
-    // Audit event
-    await createOrderEvent({
-      orderId: order.id,
-      eventType: 'created',
-      actorId: clientId,
-      actorRole: 'client',
-      payload: { source: 'whatsapp_excel', totalUnits: validatedData.totalUnits },
-    });
+    // Send summary — single week uses compact format, multiple weeks uses multi-week format
+    const firstOrderId = createdOrders[0].orderId;
+    let summary: string;
+    if (createdOrders.length === 1) {
+      summary = formatCompactSummary(createdOrders[0].validatedData, orgName);
+    } else {
+      summary = formatMultiWeekSummary(
+        createdOrders.map((o) => ({ weekLabel: o.weekLabel, data: o.validatedData })),
+        orgName
+      );
+    }
 
-    // Send compact summary and update conversation state
-    const summary = formatCompactSummary(validatedData, orgName);
-    await replyLong(phone, summary, order.id, 'awaiting_confirmation');
-    await setState(phone, 'awaiting_confirmation', order.id);
+    await replyLong(phone, summary, firstOrderId, 'awaiting_confirmation');
+    await setState(phone, 'awaiting_confirmation', firstOrderId);
 
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -298,37 +330,44 @@ export async function POST(request: NextRequest) {
 
       // ── Confirmación ──────────────────────────────────────────────────────
       case 'CONFIRM': {
-        const { data: order } = await supabase
+        const { data: drafts } = await supabase
           .from('orders')
-          .select('*')
+          .select('id, total_units, week_label')
           .eq('organization_id', client.organization_id)
           .eq('status', 'draft')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .order('created_at', { ascending: false });
 
-        if (!order) {
+        if (!drafts || drafts.length === 0) {
           await reply(msg.phone, responses.noOrderToConfirm());
           break;
         }
 
-        await supabase
-          .from('orders')
-          .update({
-            status: 'confirmed',
-            confirmed_at: new Date().toISOString(),
-            confirmed_by: client.id,
-          })
-          .eq('id', order.id);
-        await createOrderEvent({
-          orderId: order.id,
-          eventType: 'confirmed',
-          actorId: client.id,
-          actorRole: 'client',
-        });
+        const now = new Date().toISOString();
+        for (const draft of drafts) {
+          await supabase
+            .from('orders')
+            .update({ status: 'confirmed', confirmed_at: now })
+            .eq('id', draft.id);
+          await createOrderEvent({
+            orderId: draft.id,
+            eventType: 'confirmed',
+            actorId: client.id,
+            actorRole: 'client',
+          });
+        }
 
-        await reply(msg.phone, responses.confirmSuccess(order.total_units, order.week_label), order.id, 'confirmed');
-        await setState(msg.phone, 'confirmed', order.id);
+        let confirmText: string;
+        if (drafts.length === 1) {
+          confirmText = responses.confirmSuccess(drafts[0].total_units, drafts[0].week_label);
+        } else {
+          const grandTotal = drafts.reduce((s, d) => s + (d.total_units ?? 0), 0);
+          const weekList = drafts.map((d) => `• ${d.week_label} (${d.total_units} viandas)`).join('\n');
+          confirmText = `✅ ¡${drafts.length} pedidos confirmados! El equipo de Sheina los revisará.\n\n${weekList}\n\nTotal: *${grandTotal} viandas*`;
+        }
+
+        const firstId = drafts[0].id;
+        await reply(msg.phone, confirmText, firstId, 'confirmed');
+        await setState(msg.phone, 'confirmed', firstId);
         break;
       }
 
