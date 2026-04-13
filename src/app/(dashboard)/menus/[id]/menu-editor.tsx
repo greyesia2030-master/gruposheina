@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
+import { parseISO, addDays, format } from "date-fns";
+import { es } from "date-fns/locale";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +33,7 @@ interface MenuEditorProps {
   menuStatus: MenuStatus;
   items: MenuItem[];
   recipeOptions: RecipeOption[];
+  weekStart: string; // "YYYY-MM-DD" — Monday of the week
 }
 
 const DAYS = [1, 2, 3, 4, 5] as const;
@@ -42,8 +45,23 @@ const CATEGORY_OPTIONS = CATEGORY_ORDER.map((cat) => ({
 
 const DEBOUNCE_MS = 500;
 
-export function MenuEditor({ menuId, menuStatus, items: initialItems, recipeOptions }: MenuEditorProps) {
+export function MenuEditor({ menuId, menuStatus, items: initialItems, recipeOptions, weekStart }: MenuEditorProps) {
   const [activeDay, setActiveDay] = useState<number>(1);
+
+  // Pre-compute actual calendar dates for each day tab (Monday + offset)
+  const dayDates = useMemo(() => {
+    try {
+      const monday = parseISO(weekStart + 'T12:00:00');
+      return Object.fromEntries(
+        ([1, 2, 3, 4, 5] as const).map((d) => [
+          d,
+          format(addDays(monday, d - 1), 'd MMM', { locale: es }),
+        ])
+      ) as Record<1 | 2 | 3 | 4 | 5, string>;
+    } catch {
+      return {} as Record<1 | 2 | 3 | 4 | 5, string>;
+    }
+  }, [weekStart]);
   const [items, setItems] = useState<MenuItem[]>(initialItems);
   const [savedId, setSavedId] = useState<string | null>(null); // muestra ✓ por 1.5s
   const debounceRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -167,7 +185,10 @@ export function MenuEditor({ menuId, menuStatus, items: initialItems, recipeOpti
                   : "text-text-secondary hover:text-text"
               }`}
             >
-              {DAY_NAMES[day]}{" "}
+              {DAY_NAMES[day]}
+              {dayDates[day as 1 | 2 | 3 | 4 | 5] && (
+                <span className="ml-1 text-xs opacity-70">{dayDates[day as 1 | 2 | 3 | 4 | 5]}</span>
+              )}{" "}
               <span className="text-xs">({count}/7)</span>
             </button>
           );

@@ -12,6 +12,7 @@ import {
   validateOrgActive,
   validateNoDuplicate,
   validateExcelStructure,
+  checkConfirmedOrderForWeek,
 } from '@/lib/whatsapp/validations';
 import { parseSheinaExcel } from '@/lib/excel/sheina-parser';
 import { parseExcelWithAI } from '@/lib/ai/claude-client';
@@ -66,7 +67,8 @@ async function processExcelBackground(
   phone: string,
   mediaUrl: string,
   clientId: string,
-  orgId: string
+  orgId: string,
+  orgName: string
 ) {
   try {
     console.log('EXCEL: downloading...');
@@ -90,9 +92,36 @@ async function processExcelBackground(
       return;
     }
 
+    // Soft check: company name in Excel vs registered org (warn only, never block)
+    if (parseResult.weeks[0]?.companyName) {
+      const excelCompany = parseResult.weeks[0].companyName;
+      const normalize = (s: string) =>
+        s.toLowerCase().replace(/\s+(s\.?r\.?l\.?|s\.?a\.?s?\.?|s\.?a\.)$/i, '').trim();
+      const orgNorm = normalize(orgName);
+      const excelNorm = normalize(excelCompany);
+      if (orgNorm && excelNorm && !excelNorm.includes(orgNorm) && !orgNorm.includes(excelNorm)) {
+        console.warn(`EXCEL: company mismatch — org="${orgName}" excel="${excelCompany}"`);
+        await reply(
+          phone,
+          `⚠️ El archivo parece pertenecer a *${excelCompany}*. Si es tu Excel correcto, ignorá este mensaje.`
+        );
+      }
+    }
+
     console.log('EXCEL: calling Claude API...');
     const validatedData = await parseExcelWithAI(parseResult);
     console.log('EXCEL: Claude ok — week:', validatedData.weekLabel, 'units:', validatedData.totalUnits);
+
+    // Check for already-confirmed order this week — warn but don't block
+    const confirmedCheck = await checkConfirmedOrderForWeek(orgId, validatedData.weekLabel);
+    if (confirmedCheck.exists) {
+      console.log(`EXCEL: confirmed order exists for week "${validatedData.weekLabel}" — warning user`);
+      await reply(
+        phone,
+        `⚠️ Ya tenés un pedido *confirmado* para *${validatedData.weekLabel}* (${confirmedCheck.totalUnits} viandas).\n\nIgual creo un borrador nuevo. Hablá con el equipo de Sheina si necesitás modificarlo.`,
+        confirmedCheck.orderId
+      );
+    }
 
     const supabase = await createSupabaseAdmin();
 
@@ -190,7 +219,7 @@ async function processExcelBackground(
     });
 
     // Send compact summary and update conversation state
-    const summary = formatCompactSummary(validatedData);
+    const summary = formatCompactSummary(validatedData, orgName);
     console.log('EXCEL: summary', summary.length, 'chars');
     await replyLong(phone, summary, order.id, 'awaiting_confirmation');
     await setState(phone, 'awaiting_confirmation', order.id);
@@ -277,6 +306,14 @@ export async function POST(request: NextRequest) {
           break;
         }
 
+        // Fetch org name for company-name validation and summary header
+        const { data: orgRow } = await supabase
+          .from('organizations')
+          .select('name')
+          .eq('id', client.organization_id)
+          .single();
+        const orgName = (orgRow?.name as string | null) ?? '';
+
         // Check for existing draft — cancel it if found
         const dupCheck = await validateNoDuplicate(client.organization_id);
         const ackMsg = dupCheck.cancelledDraftId
@@ -285,7 +322,7 @@ export async function POST(request: NextRequest) {
 
         await reply(msg.phone, ackMsg, undefined, 'processing');
         await setState(msg.phone, 'processing');
-        after(processExcelBackground(msg.phone, msg.mediaUrl!, client.id, client.organization_id));
+        after(processExcelBackground(msg.phone, msg.mediaUrl!, client.id, client.organization_id, orgName));
         break;
       }
 

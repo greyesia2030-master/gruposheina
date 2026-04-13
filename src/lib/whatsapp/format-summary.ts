@@ -25,7 +25,7 @@ function shortName(name: string, maxLen = 24): string {
  * Genera el resumen COMPACTO del pedido para WhatsApp.
  *
  * Formato:
- *   📋 Pedido — SEMANA 4
+ *   📋 Pedido de *Pilo Enterprise* — SEMANA 4
  *   Lun: 17 vnd | Mar: 43 vnd | Mié: 51 vnd
  *   Jue: ⛱️ Feriado | Vie: 56 vnd
  *   Total: 167 viandas
@@ -34,10 +34,11 @@ function shortName(name: string, maxLen = 24): string {
  *
  *   Respondé *confirmo* o *cancelar*
  */
-export function formatCompactSummary(orderData: ValidatedOrderData): string {
+export function formatCompactSummary(orderData: ValidatedOrderData, orgName?: string): string {
   const parts: string[] = [];
 
-  parts.push(`📋 *Pedido — ${orderData.weekLabel}*`);
+  const orgPart = orgName ? `de *${orgName}* — ` : '— ';
+  parts.push(`📋 Pedido ${orgPart}${orderData.weekLabel}`);
 
   // Build one token per day
   const dayTokens: string[] = [];

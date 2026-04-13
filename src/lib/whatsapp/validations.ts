@@ -200,3 +200,49 @@ export async function validateNoDuplicate(orgId: string): Promise<DuplicateCheck
 
 // Alias — same logic, semantically named for Excel structure check
 export const validateExcelStructure = validateExcelFile;
+
+// ---------------------------------------------------------------------------
+// Confirmed order duplicate check
+// ---------------------------------------------------------------------------
+
+export interface ConfirmedOrderCheckResult {
+  exists: boolean;
+  orderId?: string;
+  weekLabel?: string;
+  totalUnits?: number;
+}
+
+/**
+ * Verifica si ya existe un pedido confirmado (o en producción/entregado) para la
+ * misma semana y organización. Se llama DESPUÉS de parsear el Excel, cuando ya
+ * se conoce el weekLabel.
+ *
+ * Si existe → advertir al cliente pero no bloquear (se crea igualmente el borrador).
+ */
+export async function checkConfirmedOrderForWeek(
+  orgId: string,
+  weekLabel: string
+): Promise<ConfirmedOrderCheckResult> {
+  try {
+    const supabase = await createSupabaseAdmin();
+    const { data } = await supabase
+      .from('orders')
+      .select('id, week_label, total_units')
+      .eq('organization_id', orgId)
+      .in('status', ['confirmed', 'in_production', 'delivered'])
+      .eq('week_label', weekLabel)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!data) return { exists: false };
+    return {
+      exists: true,
+      orderId: data.id,
+      weekLabel: data.week_label,
+      totalUnits: data.total_units,
+    };
+  } catch {
+    return { exists: false };
+  }
+}

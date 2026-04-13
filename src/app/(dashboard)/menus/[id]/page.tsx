@@ -78,6 +78,7 @@ export default async function MenuDetailPage({
         menuStatus={menu.status}
         items={items ?? []}
         recipeOptions={recipeOptions}
+        weekStart={menu.week_start}
       />
     </div>
   );

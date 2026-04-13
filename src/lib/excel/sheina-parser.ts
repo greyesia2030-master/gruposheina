@@ -10,6 +10,7 @@ const DAY_NAMES: Record<string, 1 | 2 | 3 | 4 | 5> = {
   'VIERNES': 5,
 };
 
+// Letras que indican feriado/pendiente en la columna de cantidad (solo si la celda tiene exactamente ese valor)
 const FERIADO_LETTERS = new Set(['F', 'E', 'R', 'I', 'A', 'D', 'O']);
 
 type Cell = string | number | null;
@@ -29,7 +30,6 @@ export async function parseSheinaExcel(buffer: Buffer): Promise<ParseResult> {
 
   const workbook = new ExcelJS.Workbook();
   try {
-    // ExcelJS accepts ArrayBuffer-like input.
     await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
   } catch {
     return {
@@ -45,6 +45,7 @@ export async function parseSheinaExcel(buffer: Buffer): Promise<ParseResult> {
 
   for (const sheet of workbook.worksheets) {
     const rows = sheetToRows(sheet);
+    console.log(`[parser] Sheet: "${sheet.name}" | rows extraídas: ${rows.length} (rowCount=${sheet.rowCount}, actual=${(sheet as unknown as { actualRowCount?: number }).actualRowCount})`);
 
     if (rows.length < 3) {
       warnings.push(`Hoja "${sheet.name}" tiene muy pocas filas, se omite`);
@@ -65,14 +66,16 @@ export async function parseSheinaExcel(buffer: Buffer): Promise<ParseResult> {
 }
 
 /**
- * Convierte una hoja de ExcelJS a una matriz 2D de celdas planas (estilo
- * `sheet_to_json` de xlsx con `header: 1`). ExcelJS usa índices 1-based;
- * normalizamos a 0-based para mantener la lógica original del parser.
+ * Convierte una hoja de ExcelJS a una matriz 2D de celdas planas.
+ * Usa actualRowCount (más confiable para hojas con datos al final) y garantiza
+ * un mínimo de 12 columnas para no perder datos en hojas con columnCount bajo.
  */
 function sheetToRows(sheet: ExcelJS.Worksheet): Row[] {
   const rows: Row[] = [];
-  const rowCount = sheet.rowCount;
-  const colCount = sheet.columnCount;
+  // actualRowCount es más confiable para archivos con formato extendido
+  const rowCount = (sheet as unknown as { actualRowCount?: number }).actualRowCount ?? sheet.rowCount;
+  // Garantizar mínimo 12 columnas (adm=col5, vtas=col6, diet=col7, log=col8, otros=col9)
+  const colCount = Math.max(sheet.columnCount, 12);
 
   for (let r = 1; r <= rowCount; r++) {
     const row = sheet.getRow(r);
@@ -126,11 +129,17 @@ function parseSheet(
 ): ParsedWeek | null {
   const weekLabel = detectWeekLabel(sheetName, rows);
   const departments = detectDepartments(rows);
+  const companyName = extractCompanyName(rows);
+
+  if (companyName) {
+    console.log(`[parser] Company name detected: "${companyName}"`);
+  }
 
   const days: ParsedDay[] = [];
   let currentDay: { name: string; dayOfWeek: 1 | 2 | 3 | 4 | 5; rows: Row[] } | null = null;
 
-  for (const row of rows) {
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
     const col1 = String(row[1] ?? '').trim().toUpperCase();
 
     if (DAY_NAMES[col1] !== undefined) {
@@ -139,22 +148,26 @@ function parseSheet(
         if (day) days.push(day);
       }
       currentDay = { name: col1, dayOfWeek: DAY_NAMES[col1], rows: [row] };
+      console.log(`[parser] Day found: ${col1} at row index ${i}`);
     } else if (currentDay) {
       currentDay.rows.push(row);
     }
   }
 
+  // Push the last day — VIERNES is the last and this is the most common failure point
   if (currentDay) {
     const day = parseDayRows(currentDay.name, currentDay.dayOfWeek, currentDay.rows, departments, warnings);
     if (day) days.push(day);
   }
+
+  console.log(`[parser] Days parsed: ${days.map((d) => `${d.dayName}:${d.options.length}opt/${d.totalUnits}u`).join(', ')}`);
 
   if (days.length === 0) {
     errors.push(`Hoja "${sheetName}": no se encontraron días (LUNES-VIERNES)`);
     return null;
   }
 
-  return { weekLabel, sheetName, days };
+  return { weekLabel, sheetName, companyName, days };
 }
 
 function detectWeekLabel(sheetName: string, rows: Row[]): string {
@@ -163,27 +176,62 @@ function detectWeekLabel(sheetName: string, rows: Row[]): string {
     if (val && /semana/i.test(val)) return val;
     if (/\d{1,2}[.\-/]\d{1,2}\s*(al|AL)\s*\d{1,2}[.\-/]\d{1,2}/.test(val)) return val;
   }
+  // Also check column 1
+  for (let i = 0; i < Math.min(5, rows.length); i++) {
+    const val = String(rows[i]?.[1] ?? '').trim();
+    if (val && /semana/i.test(val)) return val;
+  }
   return sheetName;
 }
 
 function detectDepartments(rows: Row[]): string[] {
   const defaults = ['adm', 'vtas', 'diet', 'log', 'otros'];
 
-  for (let i = 0; i < Math.min(5, rows.length); i++) {
+  for (let i = 0; i < Math.min(10, rows.length); i++) {
     const row = rows[i];
     if (!row || row.length < 6) continue;
 
     const candidates = [];
-    for (let col = 5; col < Math.min(10, row.length); col++) {
+    for (let col = 5; col < Math.min(12, row.length); col++) {
       const val = String(row[col] ?? '').trim().toLowerCase();
       if (val && !/^\d+$/.test(val)) {
         candidates.push(val);
       }
     }
-    if (candidates.length >= 3) return candidates;
+    if (candidates.length >= 3) {
+      console.log(`[parser] Departments detected at row ${i}: ${candidates.join(', ')}`);
+      return candidates;
+    }
   }
 
   return defaults;
+}
+
+/**
+ * Intenta extraer el nombre de empresa de las filas de encabezado (antes del primer día).
+ * Busca en las primeras 8 filas, columnas 0-3, un texto que no sea semana/fecha/día/número.
+ */
+function extractCompanyName(rows: Row[]): string | undefined {
+  const dayKeys = new Set(Object.keys(DAY_NAMES));
+
+  for (let i = 0; i < Math.min(8, rows.length); i++) {
+    for (let col = 0; col <= 3; col++) {
+      const val = String(rows[i][col] ?? '').trim();
+      if (val.length < 3) continue;
+      // Skip if it's a day name
+      if (dayKeys.has(val.toUpperCase())) continue;
+      // Skip if it's a week/date pattern
+      if (/semana/i.test(val)) continue;
+      if (/^\d{1,2}[.\-/]\d{1,2}/.test(val)) continue;
+      // Skip if it's purely numeric
+      if (/^\d+([.,]\d+)?$/.test(val)) continue;
+      // Skip known column header labels
+      if (/^(adm|vtas|diet|log|otros|departamento|total|codigo|nombre|cantidad|descripcion|opcion)$/i.test(val)) continue;
+      // This looks like a company name
+      return val;
+    }
+  }
+  return undefined;
 }
 
 function parseDayRows(
@@ -201,12 +249,14 @@ function parseDayRows(
     const col3 = String(row[3] ?? '').trim();
     const col4Raw = row[4];
 
+    // TOTALES row — marks end of day options, extract sheet total
     if (/totales?/i.test(col3)) {
       const total = parseFloat(String(col4Raw ?? '0'));
       if (!isNaN(total)) totalFromSheet = total;
       continue;
     }
 
+    // Skip rows without option code or name
     if (!col2 || !col3) continue;
 
     const anomalies: string[] = [];
@@ -220,10 +270,12 @@ function parseDayRows(
       const strVal = String(col4Raw).trim();
       const parsed = parseFloat(strVal);
       if (isNaN(parsed)) {
+        // Only treat as feriado if it's a single letter from the known set — empty/zero cells are NOT feriado
         if (strVal.length === 1 && FERIADO_LETTERS.has(strVal.toUpperCase())) {
-          anomalies.push(`Posible feriado o pendiente: columna cantidad tiene "${strVal}"`);
+          // Include "FERIADO" keyword so formatCompactSummary can detect it in anomalies
+          anomalies.push(`FERIADO: ${dayName} opción ${col2} tiene "${strVal}" en cantidad`);
         } else {
-          anomalies.push(`Valor no numérico en cantidad: "${strVal}"`);
+          anomalies.push(`Valor no numérico en ${dayName} opción ${col2}: "${strVal}"`);
         }
         mainQty = 0;
       } else {
@@ -239,9 +291,12 @@ function parseDayRows(
       deptQuantities[departments[i]] = isNaN(num) ? 0 : num;
     }
 
+    // Validate dept sum vs main quantity (only when both have data)
     const deptSum = Object.values(deptQuantities).reduce((a, b) => a + b, 0);
     if (mainQty > 0 && deptSum > 0 && Math.abs(deptSum - mainQty) > 0.5) {
-      anomalies.push(`Inconsistencia: total departamentos (${deptSum}) ≠ cantidad principal (${mainQty})`);
+      anomalies.push(
+        `Inconsistencia en ${dayName} ${col2}: depts (${deptSum}) ≠ principal (${mainQty})`
+      );
     }
 
     options.push({
