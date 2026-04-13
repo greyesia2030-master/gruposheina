@@ -45,7 +45,6 @@ export async function parseSheinaExcel(buffer: Buffer): Promise<ParseResult> {
 
   for (const sheet of workbook.worksheets) {
     const rows = sheetToRows(sheet);
-    console.log(`[parser] Sheet: "${sheet.name}" | rows extraídas: ${rows.length} (rowCount=${sheet.rowCount}, actual=${(sheet as unknown as { actualRowCount?: number }).actualRowCount})`);
 
     if (rows.length < 3) {
       warnings.push(`Hoja "${sheet.name}" tiene muy pocas filas, se omite`);
@@ -131,10 +130,6 @@ function parseSheet(
   const departments = detectDepartments(rows);
   const companyName = extractCompanyName(rows);
 
-  if (companyName) {
-    console.log(`[parser] Company name detected: "${companyName}"`);
-  }
-
   const days: ParsedDay[] = [];
   let currentDay: { name: string; dayOfWeek: 1 | 2 | 3 | 4 | 5; rows: Row[] } | null = null;
 
@@ -148,7 +143,6 @@ function parseSheet(
         if (day) days.push(day);
       }
       currentDay = { name: col1, dayOfWeek: DAY_NAMES[col1], rows: [row] };
-      console.log(`[parser] Day found: ${col1} at row index ${i}`);
     } else if (currentDay) {
       currentDay.rows.push(row);
     }
@@ -159,8 +153,6 @@ function parseSheet(
     const day = parseDayRows(currentDay.name, currentDay.dayOfWeek, currentDay.rows, departments, warnings);
     if (day) days.push(day);
   }
-
-  console.log(`[parser] Days parsed: ${days.map((d) => `${d.dayName}:${d.options.length}opt/${d.totalUnits}u`).join(', ')}`);
 
   if (days.length === 0) {
     errors.push(`Hoja "${sheetName}": no se encontraron días (LUNES-VIERNES)`);
@@ -199,7 +191,6 @@ function detectDepartments(rows: Row[]): string[] {
       }
     }
     if (candidates.length >= 3) {
-      console.log(`[parser] Departments detected at row ${i}: ${candidates.join(', ')}`);
       return candidates;
     }
   }
@@ -321,6 +312,8 @@ function parseDayRows(
     dayOfWeek,
     dayName,
     options,
-    totalUnits: calculatedTotal,
+    // Prefer the value read from the TOTALES cell; fall back to calculated sum
+    // if the sheet had no TOTALES row (shouldn't happen in well-formed files).
+    totalUnits: totalFromSheet > 0 ? totalFromSheet : calculatedTotal,
   };
 }
