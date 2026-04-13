@@ -69,23 +69,6 @@ export function formatCompactSummary(orderData: ValidatedOrderData, orgName?: st
 
   parts.push(`*Total: ${orderData.totalUnits} viandas*`);
 
-  // Simplified warnings — max 2 lines, no technical details
-  const invalidDayCount = orderData.days.filter((d) =>
-    d.options.some((opt) => !opt.isValid)
-  ).length;
-
-  if (invalidDayCount > 0) {
-    parts.push('');
-    parts.push(
-      `⚠️ ${invalidDayCount} día${invalidDayCount > 1 ? 's tienen' : ' tiene'} totales que no cuadran`
-    );
-  } else if (orderData.anomalies.length > 0) {
-    parts.push('');
-    parts.push(
-      `⚠️ ${orderData.anomalies.length} observación${orderData.anomalies.length > 1 ? 'es' : ''} en el Excel`
-    );
-  }
-
   parts.push('');
   parts.push('Respondé *confirmo* o *cancelar*');
 

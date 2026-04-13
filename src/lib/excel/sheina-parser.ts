@@ -128,7 +128,6 @@ function parseSheet(
 ): ParsedWeek | null {
   const weekLabel = detectWeekLabel(sheetName, rows);
   const departments = detectDepartments(rows);
-  const companyName = extractCompanyName(rows);
 
   const days: ParsedDay[] = [];
   let currentDay: { name: string; dayOfWeek: 1 | 2 | 3 | 4 | 5; rows: Row[] } | null = null;
@@ -136,13 +135,21 @@ function parseSheet(
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const col1 = String(row[1] ?? '').trim().toUpperCase();
+    const newDow = DAY_NAMES[col1];
 
-    if (DAY_NAMES[col1] !== undefined) {
-      if (currentDay) {
+    if (newDow !== undefined) {
+      if (!currentDay) {
+        // First day encountered
+        currentDay = { name: col1, dayOfWeek: newDow, rows: [row] };
+      } else if (currentDay.dayOfWeek !== newDow) {
+        // Transitioning to a DIFFERENT day — flush previous
         const day = parseDayRows(currentDay.name, currentDay.dayOfWeek, currentDay.rows, departments, warnings);
         if (day) days.push(day);
+        currentDay = { name: col1, dayOfWeek: newDow, rows: [row] };
+      } else {
+        // Same day name repeated (Sheina Excel repeats day name for every option row)
+        currentDay.rows.push(row);
       }
-      currentDay = { name: col1, dayOfWeek: DAY_NAMES[col1], rows: [row] };
     } else if (currentDay) {
       currentDay.rows.push(row);
     }
@@ -159,7 +166,7 @@ function parseSheet(
     return null;
   }
 
-  return { weekLabel, sheetName, companyName, days };
+  return { weekLabel, sheetName, days };
 }
 
 function detectWeekLabel(sheetName: string, rows: Row[]): string {
@@ -196,33 +203,6 @@ function detectDepartments(rows: Row[]): string[] {
   }
 
   return defaults;
-}
-
-/**
- * Intenta extraer el nombre de empresa de las filas de encabezado (antes del primer día).
- * Busca en las primeras 8 filas, columnas 0-3, un texto que no sea semana/fecha/día/número.
- */
-function extractCompanyName(rows: Row[]): string | undefined {
-  const dayKeys = new Set(Object.keys(DAY_NAMES));
-
-  for (let i = 0; i < Math.min(8, rows.length); i++) {
-    for (let col = 0; col <= 3; col++) {
-      const val = String(rows[i][col] ?? '').trim();
-      if (val.length < 3) continue;
-      // Skip if it's a day name
-      if (dayKeys.has(val.toUpperCase())) continue;
-      // Skip if it's a week/date pattern
-      if (/semana/i.test(val)) continue;
-      if (/^\d{1,2}[.\-/]\d{1,2}/.test(val)) continue;
-      // Skip if it's purely numeric
-      if (/^\d+([.,]\d+)?$/.test(val)) continue;
-      // Skip known column header labels
-      if (/^(adm|vtas|diet|log|otros|departamento|total|codigo|nombre|cantidad|descripcion|opcion)$/i.test(val)) continue;
-      // This looks like a company name
-      return val;
-    }
-  }
-  return undefined;
 }
 
 function parseDayRows(

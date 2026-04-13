@@ -18,7 +18,6 @@ export interface ParsedDay {
 export interface ParsedWeek {
   weekLabel: string;
   sheetName: string;
-  companyName?: string;
   days: ParsedDay[];
 }
 

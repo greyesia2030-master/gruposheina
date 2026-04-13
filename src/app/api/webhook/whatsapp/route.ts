@@ -87,22 +87,6 @@ async function processExcelBackground(
       return;
     }
 
-    // Soft check: company name in Excel vs registered org (warn only, never block)
-    if (parseResult.weeks[0]?.companyName) {
-      const excelCompany = parseResult.weeks[0].companyName;
-      const normalize = (s: string) =>
-        s.toLowerCase().replace(/\s+(s\.?r\.?l\.?|s\.?a\.?s?\.?|s\.?a\.)$/i, '').trim();
-      const orgNorm = normalize(orgName);
-      const excelNorm = normalize(excelCompany);
-      if (orgNorm && excelNorm && !excelNorm.includes(orgNorm) && !orgNorm.includes(excelNorm)) {
-        console.warn(`EXCEL: company mismatch — org="${orgName}" excel="${excelCompany}"`);
-        await reply(
-          phone,
-          `⚠️ El archivo parece pertenecer a *${excelCompany}*. Si es tu Excel correcto, ignorá este mensaje.`
-        );
-      }
-    }
-
     const validatedData = await parseExcelWithAI(parseResult);
 
     // Check for already-confirmed order this week — warn but don't block
