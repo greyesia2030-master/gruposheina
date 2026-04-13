@@ -3,6 +3,8 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { createSupabaseServer } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth/require-user";
+import { canViewCost } from "@/lib/permissions";
 import { CATEGORY_LABELS } from "@/lib/types/menus";
 import { RecipeIngredients } from "./recipe-ingredients";
 import { formatART } from "@/lib/utils/timezone";
@@ -13,7 +15,11 @@ export default async function RecetaDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const supabase = await createSupabaseServer();
+  const [supabase, currentUser] = await Promise.all([
+    createSupabaseServer(),
+    requireUser(),
+  ]);
+  const showCost = canViewCost(currentUser.role);
 
   const { data: recipe } = await supabase
     .from("recipes")
@@ -61,21 +67,23 @@ export default async function RecetaDetailPage({
       />
 
       {/* Info principal */}
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+      <div className={`mb-6 grid gap-4 ${showCost ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
         <Card>
           <div className="p-4 text-center">
             <p className="text-xs text-text-secondary">Versión actual</p>
             <p className="text-2xl font-bold">v{currentVersion?.version ?? "—"}</p>
           </div>
         </Card>
-        <Card>
-          <div className="p-4 text-center">
-            <p className="text-xs text-text-secondary">Costo por porción</p>
-            <p className="text-2xl font-bold text-primary">
-              ${(currentVersion?.cost_per_portion ?? 0).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-            </p>
-          </div>
-        </Card>
+        {showCost && (
+          <Card>
+            <div className="p-4 text-center">
+              <p className="text-xs text-text-secondary">Costo por porción</p>
+              <p className="text-2xl font-bold text-primary">
+                ${(currentVersion?.cost_per_portion ?? 0).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+              </p>
+            </div>
+          </Card>
+        )}
         <Card>
           <div className="p-4 text-center">
             <p className="text-xs text-text-secondary">Rendimiento</p>
@@ -112,7 +120,7 @@ export default async function RecetaDetailPage({
                   <tr className="border-b border-border text-left text-text-secondary">
                     <th className="px-4 py-3 font-medium">Versión</th>
                     <th className="px-4 py-3 font-medium">Rendimiento</th>
-                    <th className="px-4 py-3 text-right font-medium">Costo/porción</th>
+                    {showCost && <th className="px-4 py-3 text-right font-medium">Costo/porción</th>}
                     <th className="px-4 py-3 font-medium">Creada por</th>
                     <th className="px-4 py-3 font-medium">Fecha</th>
                     <th className="px-4 py-3 font-medium">Estado</th>
@@ -125,9 +133,11 @@ export default async function RecetaDetailPage({
                       <tr key={v.id} className="border-b border-border last:border-0">
                         <td className="px-4 py-3 font-mono font-bold">v{v.version}</td>
                         <td className="px-4 py-3 text-text-secondary">{v.portions_yield} porciones</td>
-                        <td className="px-4 py-3 text-right font-semibold">
-                          ${(v.cost_per_portion ?? 0).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                        </td>
+                        {showCost && (
+                          <td className="px-4 py-3 text-right font-semibold">
+                            ${(v.cost_per_portion ?? 0).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                          </td>
+                        )}
                         <td className="px-4 py-3 text-text-secondary">{creator?.full_name ?? "—"}</td>
                         <td className="px-4 py-3 text-text-secondary">
                           {formatART(v.created_at, "dd MMM yyyy")}

@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
-import { OrderStatusBadge } from "@/components/ui/badge";
+import { OrderStatusBadge, Badge } from "@/components/ui/badge";
 import { createSupabaseServer } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth/require-user";
+import { canViewSalePrice } from "@/lib/permissions";
 import { DAY_NAMES } from "@/lib/types/orders";
 import { isWithinCutoff } from "@/lib/orders/cutoff";
 import { OrderActions } from "./order-actions";
@@ -16,8 +18,9 @@ import {
   MessageSquare,
   Globe,
   Phone,
+  DollarSign,
 } from "lucide-react";
-import type { OrderStatus } from "@/lib/types/database";
+import type { OrderStatus, PaymentStatus } from "@/lib/types/database";
 import { formatART } from "@/lib/utils/timezone";
 
 const SOURCE_ICONS: Record<string, React.ReactNode> = {
@@ -35,13 +38,31 @@ const SOURCE_LABELS: Record<string, string> = {
   subscription:   "Suscripción",
 };
 
+const PAYMENT_VARIANT: Record<PaymentStatus, "success" | "warning" | "danger" | "default"> = {
+  paid:    "success",
+  partial: "warning",
+  overdue: "danger",
+  pending: "default",
+};
+
+const PAYMENT_LABELS: Record<PaymentStatus, string> = {
+  paid:    "Pagado",
+  partial: "Parcial",
+  overdue: "Vencido",
+  pending: "Pendiente",
+};
+
 export default async function PedidoDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const supabase = await createSupabaseServer();
+  const [supabase, currentUser] = await Promise.all([
+    createSupabaseServer(),
+    requireUser(),
+  ]);
+  const showFinancials = canViewSalePrice(currentUser.role);
 
   // Cargar pedido con organización y menú para corte
   const { data: order } = await supabase
@@ -111,7 +132,7 @@ export default async function PedidoDetailPage({
       />
 
       {/* Tarjetas de info */}
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className={`mb-6 grid gap-3 sm:grid-cols-2 ${showFinancials ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
         <Card>
           <div className="flex items-center gap-3 p-4">
             <Building2 className="h-5 w-5 shrink-0 text-text-secondary" />
@@ -154,6 +175,24 @@ export default async function PedidoDetailPage({
             </div>
           </div>
         </Card>
+        {showFinancials && (
+          <Card>
+            <div className="flex items-center gap-3 p-4">
+              <DollarSign className="h-5 w-5 shrink-0 text-text-secondary" />
+              <div>
+                <p className="text-xs text-text-secondary">Pago</p>
+                <Badge variant={PAYMENT_VARIANT[order.payment_status as PaymentStatus] ?? "default"}>
+                  {PAYMENT_LABELS[order.payment_status as PaymentStatus] ?? order.payment_status}
+                </Badge>
+                {order.total_amount > 0 && (
+                  <p className="mt-0.5 text-sm font-semibold">
+                    ${order.total_amount.toLocaleString("es-AR")}
+                  </p>
+                )}
+              </div>
+            </div>
+          </Card>
+        )}
       </div>
 
       {/* Detalle de líneas (editable o solo lectura) */}
