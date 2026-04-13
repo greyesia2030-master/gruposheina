@@ -55,7 +55,7 @@ export function formatCompactSummary(orderData: ValidatedOrderData, orgName?: st
       });
       dayTokens.push(isFeriado ? `${short}: ⛱️ Feriado` : `${short}: —`);
     } else {
-      dayTokens.push(`${short}: ${day.totalUnits} vnd`);
+      dayTokens.push(`${short}: ${day.totalUnits}`);
     }
   }
 
