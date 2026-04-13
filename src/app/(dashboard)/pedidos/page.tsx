@@ -8,6 +8,7 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/auth/require-user";
 import { canViewSalePrice } from "@/lib/permissions";
 import { QuickActionButton } from "./quick-action-button";
+import { ClickableRow } from "./clickable-row";
 import type { OrderStatus, PaymentStatus } from "@/lib/types/database";
 import { MessageSquare, Globe, Phone } from "lucide-react";
 import { formatART } from "@/lib/utils/timezone";
@@ -123,16 +124,16 @@ export default async function PedidosPage({
               </thead>
               <tbody>
                 {orders.map((order) => {
-                  const org = (order.organization as unknown as { name: string }[] | null)?.[0] ?? null;
+                  // Supabase many-to-one FK returns single object (not array)
+                  const org = order.organization as unknown as { name: string } | null;
                   return (
-                    <tr key={order.id} className="border-b border-border last:border-0 hover:bg-surface-hover">
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/pedidos/${order.id}`}
-                          className="font-medium hover:text-primary"
-                        >
-                          {org?.name ?? "—"}
-                        </Link>
+                    <ClickableRow
+                      key={order.id}
+                      href={`/pedidos/${order.id}`}
+                      className="border-b border-border last:border-0 hover:bg-surface-hover"
+                    >
+                      <td className="px-4 py-3 font-medium">
+                        {org?.name ?? "—"}
                       </td>
                       <td className="px-4 py-3 text-text-secondary">{order.week_label}</td>
                       <td className="px-4 py-3">
@@ -168,7 +169,7 @@ export default async function PedidosPage({
                           status={order.status as OrderStatus}
                         />
                       </td>
-                    </tr>
+                    </ClickableRow>
                   );
                 })}
               </tbody>

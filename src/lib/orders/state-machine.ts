@@ -79,6 +79,25 @@ export async function transitionOrder(
   if (newStatus === 'confirmed') {
     updateData.confirmed_at = new Date().toISOString();
     updateData.confirmed_by = actorId;
+
+    // Calcular total_amount = total_units * price_per_unit de la organización
+    try {
+      const { data: orderFull } = await supabase
+        .from('orders')
+        .select('total_units, organization:organizations(price_per_unit)')
+        .eq('id', orderId)
+        .single();
+      if (orderFull) {
+        const org = orderFull.organization as unknown as { price_per_unit: number } | null;
+        const pricePerUnit = org?.price_per_unit ?? 0;
+        if (pricePerUnit > 0) {
+          updateData.total_amount = orderFull.total_units * pricePerUnit;
+        }
+      }
+    } catch { /* no bloquear la transición si falla el cálculo */ }
+  }
+  if (newStatus === 'delivered') {
+    updateData.delivered_at = new Date().toISOString();
   }
 
   const { error: updateError } = await supabase

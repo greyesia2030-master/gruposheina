@@ -112,6 +112,14 @@ async function processExcelBackground(phone: string, mediaUrl: string) {
       menuId = (current ?? matchingMenu[0]).id;
     }
 
+    // Obtener precio por vianda de la organización para calcular total_amount
+    const { data: orgData } = await supabase
+      .from('organizations')
+      .select('price_per_unit')
+      .eq('id', client.organization_id)
+      .single();
+    const pricePerUnit = (orgData?.price_per_unit as number | null) ?? 0;
+
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .insert({
@@ -121,6 +129,7 @@ async function processExcelBackground(phone: string, mediaUrl: string) {
         status: 'draft',
         source: 'whatsapp_excel',
         total_units: validatedData.totalUnits,
+        total_amount: pricePerUnit > 0 ? validatedData.totalUnits * pricePerUnit : 0,
         ai_parsing_log: validatedData as unknown as Record<string, unknown>,
       })
       .select()

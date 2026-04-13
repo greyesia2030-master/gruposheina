@@ -15,12 +15,13 @@ export type InvCategory = "carnes" | "lacteos" | "verduras" | "secos" | "condime
 export interface Organization {
   id: string;
   name: string;
-  cuit: string;
-  contact_phone: string;
+  cuit: string | null;
+  contact_phone: string | null;
   cutoff_time: string; // HH:MM
   cutoff_days_before: number;
   departments: string[];
   authorized_phones: string[];
+  price_per_unit: number;
   status: OrgStatus;
   created_at: string;
   updated_at: string;
@@ -102,6 +103,7 @@ export interface Order {
   payment_status: PaymentStatus;
   confirmed_at: string | null;
   confirmed_by: string | null;
+  delivered_at: string | null;
   original_file_url: string | null;
   ai_parsing_log: Record<string, unknown> | null;
   created_at: string;

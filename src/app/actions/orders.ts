@@ -7,6 +7,7 @@ import { requireAdmin, AuthError } from "@/lib/auth/require-user";
 import { transitionOrder } from "@/lib/orders/state-machine";
 import { isWithinCutoff } from "@/lib/orders/cutoff";
 import { createOrderEvent } from "@/lib/orders/events";
+import { registerMovement } from "@/lib/inventory/movements";
 import type { OrderStatus } from "@/lib/types/database";
 
 export type ActionResult<T = void> =
@@ -106,6 +107,11 @@ export async function transitionOrderStatus(
   } catch (err) {
     const message = err instanceof Error ? err.message : "Error al actualizar";
     return fail(message);
+  }
+
+  // Descuento de inventario al pasar a producción
+  if (data.newStatus === "in_production") {
+    await consumeInventoryForOrder(data.orderId, auth.user.id);
   }
 
   revalidatePath("/pedidos");
@@ -238,4 +244,102 @@ export async function updateOrderLines(
   revalidatePath(`/pedidos/${orderId}`);
   revalidatePath("/pedidos");
   return ok(undefined);
+}
+
+// ============================================================================
+// consumeInventoryForOrder — descuenta insumos al pasar un pedido a producción
+// ============================================================================
+
+async function consumeInventoryForOrder(orderId: string, actorId: string): Promise<void> {
+  const supabase = await createSupabaseAdmin();
+
+  // 1. Obtener pedido con menu_id
+  const { data: order } = await supabase
+    .from("orders")
+    .select("menu_id, organization_id")
+    .eq("id", orderId)
+    .single();
+  if (!order?.menu_id) return; // sin menú, no hay recetas que cruzar
+
+  // 2. Obtener todas las líneas del pedido, sumar cantidades por (option_code, day_of_week)
+  const { data: lines } = await supabase
+    .from("order_lines")
+    .select("option_code, day_of_week, quantity")
+    .eq("order_id", orderId);
+  if (!lines || lines.length === 0) return;
+
+  // Agrupar: { "A_1": 35, "B_1": 28, ... }
+  const totalsPerOption: Record<string, number> = {};
+  for (const line of lines) {
+    const key = `${line.option_code}_${line.day_of_week}`;
+    totalsPerOption[key] = (totalsPerOption[key] ?? 0) + (line.quantity ?? 0);
+  }
+
+  // 3. Para cada opción, obtener recipe_version_id desde menu_items
+  const uniqueOptions = Object.entries(totalsPerOption).filter(([, qty]) => qty > 0);
+  if (uniqueOptions.length === 0) return;
+
+  // Map: option_code+day → recipe_version_id
+  const recipeVersionMap: Record<string, string> = {};
+  for (const [key] of uniqueOptions) {
+    const [optCode, dayStr] = key.split("_");
+    const { data: menuItem } = await supabase
+      .from("menu_items")
+      .select("recipe_version_id")
+      .eq("menu_id", order.menu_id)
+      .eq("option_code", optCode)
+      .eq("day_of_week", parseInt(dayStr, 10))
+      .maybeSingle();
+    if (menuItem?.recipe_version_id) {
+      recipeVersionMap[key] = menuItem.recipe_version_id;
+    }
+  }
+
+  // 4. Obtener ingredientes para cada recipe_version_id
+  const recipeVersionIds = [...new Set(Object.values(recipeVersionMap))];
+  if (recipeVersionIds.length === 0) return;
+
+  const { data: ingredients } = await supabase
+    .from("recipe_ingredients")
+    .select("recipe_version_id, inventory_item_id, quantity")
+    .in("recipe_version_id", recipeVersionIds);
+  if (!ingredients || ingredients.length === 0) return;
+
+  // 5. Calcular total por insumo: suma de (qty_por_receta × porciones_producidas)
+  const consumptionMap: Record<string, number> = {}; // inventory_item_id → total qty
+
+  for (const [key, totalUnits] of uniqueOptions) {
+    const rvId = recipeVersionMap[key];
+    if (!rvId) continue;
+    const recipeIngredients = ingredients.filter((i) => i.recipe_version_id === rvId);
+    for (const ing of recipeIngredients) {
+      const needed = ing.quantity * totalUnits;
+      consumptionMap[ing.inventory_item_id] = (consumptionMap[ing.inventory_item_id] ?? 0) + needed;
+    }
+  }
+
+  // 6. Registrar movimientos de production_consumption
+  const errors: string[] = [];
+  for (const [itemId, totalQty] of Object.entries(consumptionMap)) {
+    if (totalQty <= 0) continue;
+    try {
+      await registerMovement({
+        itemId,
+        movementType: "production_consumption",
+        quantity: totalQty,
+        actorId,
+        referenceType: "order",
+        referenceId: orderId,
+        reason: `Producción pedido ${orderId.slice(0, 8)}`,
+      });
+    } catch (err) {
+      errors.push(`${itemId}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  if (errors.length > 0) {
+    console.error("INVENTORY: partial failure consuming stock:", errors);
+  } else {
+    console.log(`INVENTORY: consumed ${Object.keys(consumptionMap).length} items for order ${orderId}`);
+  }
 }

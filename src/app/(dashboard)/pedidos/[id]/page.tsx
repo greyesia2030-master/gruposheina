@@ -91,13 +91,14 @@ export default async function PedidoDetailPage({
   const lines = linesResult.data ?? [];
   const events = eventsResult.data ?? [];
 
-  const org = (order.organization as unknown as {
+  // Supabase many-to-one FK returns a single object, not an array
+  const org = order.organization as {
     name: string;
     cutoff_time: string;
     cutoff_days_before: number;
-  }[] | null)?.[0] ?? null;
+  } | null;
 
-  const menu = (order.menu as unknown as { id: string; week_start: string; week_end: string }[] | null)?.[0] ?? null;
+  const menu = order.menu as { id: string; week_start: string; week_end: string } | null;
 
   // Calcular ventana de corte
   const withinCutoff =
