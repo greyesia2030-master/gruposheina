@@ -129,6 +129,41 @@ export function formatOrderSummaryDetailed(orderData: ValidatedOrderData): strin
 export const formatOrderSummary = formatCompactSummary;
 
 /**
+ * Resumen compacto cuando se crean múltiples pedidos de un Excel multi-semana.
+ *
+ * Formato:
+ *   📋 3 pedidos creados para *IBM-TEST*:
+ *   — *13.05 AL 20.05*: 210 vnd
+ *   — *23.05 AL 25.05*: 85 vnd
+ *   — *30.05 AL 03.06*: 168 vnd
+ *   *Total: 463 viandas*
+ *
+ *   Respondé *confirmo* para confirmar todos o *cancelar*
+ */
+export function formatCreatedMultiSummary(
+  orders: Array<{ weekLabel: string; totalUnits: number }>,
+  orgName?: string
+): string {
+  const parts: string[] = [];
+  const n = orders.length;
+  const orgPart = orgName ? ` para *${orgName}*` : '';
+  parts.push(`📋 ${n} pedido${n > 1 ? 's' : ''} creado${n > 1 ? 's' : ''}${orgPart}:`);
+
+  let grandTotal = 0;
+  for (const order of orders) {
+    parts.push(`— *${order.weekLabel}*: ${order.totalUnits} vnd`);
+    grandTotal += order.totalUnits;
+  }
+
+  parts.push('');
+  parts.push(`*Total: ${grandTotal} viandas*`);
+  parts.push('');
+  parts.push('Respondé *confirmo* para confirmar todos o *cancelar*');
+
+  return parts.join('\n');
+}
+
+/**
  * Genera el resumen combinado cuando el Excel tiene múltiples semanas.
  *
  * Formato:

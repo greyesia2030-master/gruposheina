@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import { classifyMessage } from '@/lib/whatsapp/classify-message';
 import { identifyClient } from '@/lib/whatsapp/receive-message';
 import { sendWhatsAppMessage, sendLongWhatsAppMessage } from '@/lib/whatsapp/send-message';
-import { formatCompactSummary, formatMultiWeekSummary, formatOrderSummaryDetailed } from '@/lib/whatsapp/format-summary';
+import { formatCompactSummary, formatCreatedMultiSummary, formatOrderSummaryDetailed } from '@/lib/whatsapp/format-summary';
 import { responses } from '@/lib/whatsapp/responses';
 import { logConversation } from '@/lib/whatsapp/audit-log';
 import { getClientContext, setState } from '@/lib/whatsapp/conversation-state';
@@ -15,7 +15,7 @@ import {
   checkConfirmedOrderForWeek,
 } from '@/lib/whatsapp/validations';
 import { parseSheinaExcel } from '@/lib/excel/sheina-parser';
-import { parseExcelWithAI } from '@/lib/ai/claude-client';
+import { convertWeekToValidated } from '@/lib/ai/claude-client';
 import { createOrderEvent } from '@/lib/orders/events';
 import { isWithinCutoff } from '@/lib/orders/cutoff';
 import { createSupabaseAdmin } from '@/lib/supabase/server';
@@ -151,12 +151,11 @@ async function processExcelBackground(
     ]);
     const pricePerUnit = (orgData?.price_per_unit as number | null) ?? 0;
 
-    // Process each week independently
-    const createdOrders: Array<{ weekLabel: string; totalUnits: number; orderId: string; validatedData: Awaited<ReturnType<typeof parseExcelWithAI>> }> = [];
+    // Process each week independently — direct TS conversion, no Claude API call
+    const createdOrders: Array<{ weekLabel: string; totalUnits: number; orderId: string; validatedData: ReturnType<typeof convertWeekToValidated> }> = [];
 
     for (const week of validWeeks) {
-      const singleWeekResult = { weeks: [week], errors: [] as string[], warnings: [] as string[] };
-      const validatedData = await parseExcelWithAI(singleWeekResult);
+      const validatedData = convertWeekToValidated(week);
 
       // Warn if a confirmed order already exists for this week (non-blocking)
       const confirmedCheck = await checkConfirmedOrderForWeek(orgId, validatedData.weekLabel);
@@ -188,17 +187,17 @@ async function processExcelBackground(
       if (orderError || !order) throw new Error(`Error creando pedido ${validatedData.weekLabel}: ${orderError?.message}`);
 
       const lines = validatedData.days.flatMap((day) =>
-        day.options.flatMap((opt) =>
-          Object.entries(opt.departments).map(([dept, qty]) => ({
+        day.options
+          .filter((opt) => opt.mainQuantity > 0)
+          .map((opt) => ({
             order_id: order.id,
             day_of_week: day.dayOfWeek,
-            department: dept,
-            quantity: qty,
+            department: 'general',
+            quantity: opt.mainQuantity,
             unit_price: 0,
             option_code: opt.code,
             display_name: opt.displayName,
           }))
-        )
       );
       if (lines.length > 0) await supabase.from('order_lines').insert(lines);
 
@@ -240,8 +239,8 @@ async function processExcelBackground(
     if (createdOrders.length === 1) {
       summary = formatCompactSummary(createdOrders[0].validatedData, orgName);
     } else {
-      summary = formatMultiWeekSummary(
-        createdOrders.map((o) => ({ weekLabel: o.weekLabel, data: o.validatedData })),
+      summary = formatCreatedMultiSummary(
+        createdOrders.map((o) => ({ weekLabel: o.weekLabel, totalUnits: o.totalUnits })),
         orgName
       );
     }
