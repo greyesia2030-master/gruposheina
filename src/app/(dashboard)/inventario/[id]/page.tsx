@@ -3,6 +3,8 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { createSupabaseServer } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth/require-user";
+import { canViewCost } from "@/lib/permissions";
 import { INV_CATEGORY_LABELS, MOVEMENT_TYPE_LABELS } from "@/lib/types/inventory";
 import { RegisterMovement } from "./register-movement";
 import { EditItemForm } from "./edit-item-form";
@@ -29,7 +31,11 @@ export default async function InventarioDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const supabase = await createSupabaseServer();
+  const [supabase, currentUser] = await Promise.all([
+    createSupabaseServer(),
+    requireUser(),
+  ]);
+  const showCost = canViewCost(currentUser.role);
 
   const { data: itemData } = await supabase
     .from("inventory_items")
@@ -98,7 +104,7 @@ export default async function InventarioDetailPage({
       />
 
       {/* Stat cards */}
-      <div className="mb-6 grid gap-4 sm:grid-cols-4">
+      <div className={`mb-6 grid gap-4 ${showCost ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
         <Card>
           <div className="p-4 text-center">
             <p className="text-xs text-text-secondary">Stock actual</p>
@@ -127,17 +133,19 @@ export default async function InventarioDetailPage({
             </p>
           </div>
         </Card>
-        <Card>
-          <div className="p-4 text-center">
-            <p className="text-xs text-text-secondary">Costo por unidad</p>
-            <p className="text-2xl font-bold text-primary">
-              $
-              {item.cost_per_unit.toLocaleString("es-AR", {
-                minimumFractionDigits: 2,
-              })}
-            </p>
-          </div>
-        </Card>
+        {showCost && (
+          <Card>
+            <div className="p-4 text-center">
+              <p className="text-xs text-text-secondary">Costo por unidad</p>
+              <p className="text-2xl font-bold text-primary">
+                $
+                {item.cost_per_unit.toLocaleString("es-AR", {
+                  minimumFractionDigits: 2,
+                })}
+              </p>
+            </div>
+          </Card>
+        )}
         <Card>
           <div className="p-4 text-center">
             <p className="text-xs text-text-secondary">En recetas activas</p>

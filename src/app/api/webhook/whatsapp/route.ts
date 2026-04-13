@@ -1,22 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { after } from 'next/server';
 import crypto from 'crypto';
-import { processIncomingMessage, identifyClient } from '@/lib/whatsapp/receive-message';
+import { classifyMessage } from '@/lib/whatsapp/classify-message';
+import { identifyClient } from '@/lib/whatsapp/receive-message';
 import { sendWhatsAppMessage, sendLongWhatsAppMessage } from '@/lib/whatsapp/send-message';
-import { formatOrderSummary } from '@/lib/whatsapp/format-summary';
+import { formatOrderSummary, formatOrderSummaryDetailed } from '@/lib/whatsapp/format-summary';
+import { R } from '@/lib/whatsapp/responses';
+import { logIn, logOut } from '@/lib/whatsapp/audit-log';
+import { setState } from '@/lib/whatsapp/conversation-state';
+import { validateRegisteredUser, validateNoDraftPending, validateExcelFile } from '@/lib/whatsapp/validations';
 import { parseSheinaExcel } from '@/lib/excel/sheina-parser';
 import { parseExcelWithAI } from '@/lib/ai/claude-client';
 import { createOrderEvent } from '@/lib/orders/events';
 import { isWithinCutoff } from '@/lib/orders/cutoff';
 import { createSupabaseAdmin } from '@/lib/supabase/server';
 
-/**
- * Valida la firma de Twilio para seguridad del webhook.
- */
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 function validateTwilioSignature(request: NextRequest, body: string): boolean {
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   if (!authToken) return false;
-
   const signature = request.headers.get('x-twilio-signature');
   if (!signature) return false;
 
@@ -31,15 +36,24 @@ function validateTwilioSignature(request: NextRequest, body: string): boolean {
     crypto.createHmac('sha1', authToken).update(url + sortedParams).digest('base64')
   );
   const actual = Buffer.from(signature);
-
   if (expected.length !== actual.length) return false;
   return crypto.timingSafeEqual(expected, actual);
 }
 
-/**
- * Procesa el Excel en background (después de retornar 200 a Twilio).
- * Se invoca via after() para no bloquear la respuesta.
- */
+async function reply(phone: string, text: string, orderId?: string, convState?: string) {
+  await sendWhatsAppMessage(phone, text);
+  await logOut(phone, text, orderId, convState);
+}
+
+async function replyLong(phone: string, text: string, orderId?: string, convState?: string) {
+  await sendLongWhatsAppMessage(phone, text);
+  await logOut(phone, text, orderId, convState);
+}
+
+// ---------------------------------------------------------------------------
+// Background Excel processing
+// ---------------------------------------------------------------------------
+
 async function processExcelBackground(phone: string, mediaUrl: string) {
   try {
     console.log('EXCEL: downloading from URL...');
@@ -58,26 +72,25 @@ async function processExcelBackground(phone: string, mediaUrl: string) {
     console.log('EXCEL: parsed,', parseResult.errors.length, 'errors,', parseResult.weeks?.length ?? 0, 'weeks');
 
     if (parseResult.errors.length > 0) {
-      await sendWhatsAppMessage(
-        phone,
-        `❌ No pude leer el Excel:\n${parseResult.errors.join('\n')}\n\nPor favor verificá el archivo y envialo de nuevo.`
-      );
+      const msg = R.parseError(parseResult.errors);
+      await reply(phone, msg);
+      await setState(phone, 'idle');
       return;
     }
 
     console.log('EXCEL: calling Claude API...');
     const validatedData = await parseExcelWithAI(parseResult);
-    console.log('EXCEL: Claude response received, weekLabel =', validatedData.weekLabel, 'totalUnits =', validatedData.totalUnits);
+    console.log('EXCEL: Claude ok, weekLabel =', validatedData.weekLabel, 'totalUnits =', validatedData.totalUnits);
 
-    console.log('EXCEL: identifying client for phone', phone);
-    const client = await identifyClient(phone);
-    console.log('EXCEL: client =', client?.id ?? 'NOT FOUND');
-
-    if (!client || !client.organization_id) {
-      await sendWhatsAppMessage(
-        phone,
-        '⚠️ No encontré tu cuenta asociada a este número. Contactá a Sheina para registrarte.'
-      );
+    const userResult = await validateRegisteredUser(phone);
+    if (!userResult.ok || !userResult.user) {
+      const msg = R.notRegistered(phone);
+      await reply(phone, msg);
+      return;
+    }
+    const client = userResult.user as typeof userResult.user & { id: string; organization_id: string };
+    if (!client.organization_id) {
+      await reply(phone, R.notRegistered(phone));
       return;
     }
 
@@ -146,17 +159,12 @@ async function processExcelBackground(phone: string, mediaUrl: string) {
           contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           upsert: true,
         });
-
       if (!uploadError) {
-        const { data: urlData, error: signErr } = await supabase.storage
+        const { data: urlData } = await supabase.storage
           .from('order-files')
           .createSignedUrl(storagePath, 60 * 60 * 24 * 7);
-
-        if (!signErr && urlData) {
-          await supabase
-            .from('orders')
-            .update({ original_file_url: urlData.signedUrl })
-            .eq('id', order.id);
+        if (urlData) {
+          await supabase.from('orders').update({ original_file_url: urlData.signedUrl }).eq('id', order.id);
         }
       }
     } catch (storageErr) {
@@ -172,66 +180,50 @@ async function processExcelBackground(phone: string, mediaUrl: string) {
       payload: { source: 'whatsapp_excel', totalUnits: validatedData.totalUnits },
     });
 
-    // Enviar resumen (splitting automático si supera 1,500 chars)
-    console.log('EXCEL: order created, sending summary...');
+    // Enviar resumen y actualizar estado de conversación
     const summary = formatOrderSummary(validatedData);
     console.log('EXCEL: summary length =', summary.length, 'chars');
-    const sids = await sendLongWhatsAppMessage(phone, summary);
-    console.log('EXCEL: summary sent,', sids.length, 'message(s):', sids.join(', '));
+    await replyLong(phone, summary, order.id, 'awaiting_confirmation');
+    await setState(phone, 'awaiting_confirmation', order.id);
+    console.log('EXCEL: summary sent, state = awaiting_confirmation');
   } catch (error) {
     const errorDetail = error instanceof Error ? error.message : String(error);
-    const errorStack = error instanceof Error ? error.stack : '';
-    console.error('EXCEL PROCESS FAILED:', errorDetail, errorStack);
+    console.error('EXCEL PROCESS FAILED:', errorDetail, error instanceof Error ? error.stack : '');
     try {
-      await sendWhatsAppMessage(phone, `❌ Error procesando Excel: ${errorDetail.substring(0, 200)}`);
+      const msg = R.processingError(errorDetail);
+      await reply(phone, msg, undefined, 'idle');
+      await setState(phone, 'idle');
     } catch {
       // ignorar error al enviar el mensaje de error
     }
   }
 }
 
+// ---------------------------------------------------------------------------
+// POST handler
+// ---------------------------------------------------------------------------
+
 export async function POST(request: NextRequest) {
   try {
     const bodyText = await request.text();
+    const params = new URLSearchParams(bodyText);
 
-    // STEP 1 — body parsed
-    const _p = new URLSearchParams(bodyText);
-    const incomingFrom = _p.get('From') ?? '';
-    const incomingBody = _p.get('Body') ?? '';
-    const incomingNumMedia = _p.get('NumMedia') ?? '0';
-    const incomingMediaType = _p.get('MediaContentType0') ?? null;
     console.log('WEBHOOK INCOMING:', JSON.stringify({
-      from: incomingFrom,
-      body: incomingBody.slice(0, 120),
-      numMedia: incomingNumMedia,
-      mediaType: incomingMediaType,
-      hasMedia: incomingNumMedia !== '0',
-    }));
-    console.log('STEP 1: body parsed');
-
-    // STEP 2 — signature check
-    const hasSignature = !!request.headers.get('x-twilio-signature');
-    const hasAuthToken = !!process.env.TWILIO_AUTH_TOKEN;
-    console.log('WEBHOOK SIGNATURE CHECK:', JSON.stringify({
-      hasSignature,
-      hasAuthToken,
-      url: request.url,
-      signatureValue: request.headers.get('x-twilio-signature')?.slice(0, 20) + '...',
+      from: params.get('From') ?? '',
+      body: (params.get('Body') ?? '').slice(0, 80),
+      numMedia: params.get('NumMedia') ?? '0',
+      mediaType: params.get('MediaContentType0') ?? null,
     }));
 
+    // Validar firma Twilio
     if (!validateTwilioSignature(request, bodyText)) {
-      console.error('WEBHOOK SIGNATURE FAILED:', JSON.stringify({
-        reason: !hasSignature ? 'missing x-twilio-signature header' : !hasAuthToken ? 'missing TWILIO_AUTH_TOKEN env var' : 'signature mismatch',
-        url: request.url,
-        hasSignature,
-        hasAuthToken,
-      }));
+      const hasSignature = !!request.headers.get('x-twilio-signature');
+      const hasToken = !!process.env.TWILIO_AUTH_TOKEN;
+      console.error('WEBHOOK SIGNATURE FAILED:', JSON.stringify({ hasSignature, hasToken, url: request.url }));
       return new NextResponse('Forbidden', { status: 403 });
     }
-    console.log('STEP 2: signature validated');
 
-    // STEP 3 — parse message and determine action
-    const params = new URLSearchParams(bodyText);
+    // Clasificar mensaje
     const webhookBody = {
       From: params.get('From') ?? '',
       Body: params.get('Body') ?? '',
@@ -239,192 +231,226 @@ export async function POST(request: NextRequest) {
       MediaUrl0: params.get('MediaUrl0') ?? undefined,
       MediaContentType0: params.get('MediaContentType0') ?? undefined,
     };
+    const msg = classifyMessage(webhookBody);
+    console.log('WEBHOOK classified:', msg.type, '| phone:', msg.phone);
 
-    const message = processIncomingMessage(webhookBody);
-    console.log('STEP 3: message type =', message.action, '| phone =', message.phone);
+    // Logging de entrada (async, no bloquea)
+    void logIn(msg.phone, msg.type, msg.text, msg.mediaUrl);
 
     const supabase = await createSupabaseAdmin();
 
-    switch (message.action) {
-      case 'PROCESS_EXCEL': {
-        // Enviar ACK inmediato para cumplir con el timeout de Twilio
-        console.log('STEP 5: sending ack to', message.phone);
-        await sendWhatsAppMessage(message.phone, '📥 Recibí tu archivo. Estoy procesándolo...');
-        console.log('STEP 6: ack sent — deferring Excel processing to background via after()');
+    // -----------------------------------------------------------------------
+    // Dispatch por tipo de mensaje
+    // -----------------------------------------------------------------------
+    switch (msg.type) {
 
-        // Procesar en background DESPUÉS de retornar el 200 a Twilio.
-        // after() garantiza que el processing continúa hasta completarse
-        // aunque la Response ya fue enviada.
-        after(processExcelBackground(message.phone, message.mediaUrl!));
+      // --- Excel válido ---
+      case 'EXCEL_FILE': {
+        const fileCheck = validateExcelFile(msg.mediaContentType ?? '', parseInt(webhookBody.NumMedia, 10));
+        if (!fileCheck.ok) {
+          await reply(msg.phone, R.invalidFile(msg.mediaContentType ?? ''));
+          break;
+        }
+        // ACK inmediato; procesamiento en background
+        await reply(msg.phone, R.processing(), undefined, 'processing');
+        await setState(msg.phone, 'processing');
+        after(processExcelBackground(msg.phone, msg.mediaUrl!));
         break;
       }
 
-      case 'CONFIRM_ORDER': {
-        try {
-          const client = await identifyClient(message.phone);
-          console.log('STEP 4 (CONFIRM): client =', client?.id ?? 'NOT FOUND');
-          if (!client) {
-            console.log('STEP 5: sending not-registered reply');
-            await sendWhatsAppMessage(message.phone, '⚠️ No encontré tu cuenta asociada a este número. Contactá a Sheina para registrarte.');
-            console.log('STEP 6: not-registered reply sent');
-            break;
-          }
+      // --- Archivo que no es Excel ---
+      case 'INVALID_FILE': {
+        await reply(msg.phone, R.invalidFile(msg.mediaContentType ?? 'desconocido'));
+        break;
+      }
 
-          const { data: order } = await supabase
-            .from('orders')
-            .select('*')
-            .eq('organization_id', client.organization_id)
-            .eq('status', 'draft')
-            .order('created_at', { ascending: false })
-            .limit(1)
+      // --- Confirmación ---
+      case 'CONFIRM': {
+        const userResult = await validateRegisteredUser(msg.phone);
+        if (!userResult.ok) {
+          await reply(msg.phone, R.notRegistered(msg.phone));
+          break;
+        }
+        const client = userResult.user!;
+        const { data: order } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('organization_id', client.organization_id!)
+          .eq('status', 'draft')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!order) {
+          await reply(msg.phone, R.noOrderToConfirm());
+          break;
+        }
+
+        await supabase
+          .from('orders')
+          .update({ status: 'confirmed', confirmed_at: new Date().toISOString(), confirmed_by: client.id })
+          .eq('id', order.id);
+        await createOrderEvent({ orderId: order.id, eventType: 'confirmed', actorId: client.id, actorRole: 'client' });
+
+        const confirmMsg = R.confirmSuccess(order.total_units, order.week_label);
+        await reply(msg.phone, confirmMsg, order.id, 'confirmed');
+        await setState(msg.phone, 'confirmed', order.id);
+        break;
+      }
+
+      // --- Cancelación ---
+      case 'CANCEL': {
+        const userResult = await validateRegisteredUser(msg.phone);
+        if (!userResult.ok) {
+          await reply(msg.phone, R.notRegistered(msg.phone));
+          break;
+        }
+        const client = userResult.user!;
+        const { data: order } = await supabase
+          .from('orders')
+          .select('*, menu:weekly_menus(*)')
+          .eq('organization_id', client.organization_id!)
+          .in('status', ['draft', 'confirmed'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!order) {
+          await reply(msg.phone, R.noOrderToCancel());
+          break;
+        }
+
+        if (order.status === 'confirmed') {
+          const { data: org } = await supabase
+            .from('organizations')
+            .select('cutoff_time, cutoff_days_before')
+            .eq('id', client.organization_id!)
             .single();
-
-          if (!order) {
-            console.log('STEP 5: sending no-draft-order reply');
-            await sendWhatsAppMessage(message.phone, 'No encontré un pedido pendiente de confirmación.');
-            console.log('STEP 6: no-draft-order reply sent');
+          if (org && !isWithinCutoff(order, order.menu, org)) {
+            await reply(msg.phone, R.postCutoff());
             break;
           }
+        }
 
-          await supabase
-            .from('orders')
-            .update({
-              status: 'confirmed' as const,
-              confirmed_at: new Date().toISOString(),
-              confirmed_by: client.id,
-            })
-            .eq('id', order.id);
+        await supabase.from('orders').update({ status: 'cancelled' }).eq('id', order.id);
+        await createOrderEvent({ orderId: order.id, eventType: 'cancelled', actorId: client.id, actorRole: 'client' });
 
-          await createOrderEvent({
-            orderId: order.id,
-            eventType: 'confirmed',
-            actorId: client.id,
-            actorRole: 'client',
-          });
+        const cancelMsg = R.cancelSuccess(order.week_label);
+        await reply(msg.phone, cancelMsg, order.id, 'idle');
+        await setState(msg.phone, 'idle');
+        break;
+      }
 
-          console.log('STEP 5: sending confirmed reply to', message.phone);
-          await sendWhatsAppMessage(
-            message.phone,
-            `✅ ¡Pedido confirmado!\nTotal: ${order.total_units} viandas — ${order.week_label}\n\nSi necesitás hacer cambios antes del corte, enviá un nuevo Excel.`
-          );
-          console.log('STEP 6: confirmed reply sent');
-        } catch (err) {
-          const e = err instanceof Error ? err : new Error(String(err));
-          console.error('STEP FAILED (CONFIRM_ORDER):', JSON.stringify({ message: e.message, stack: e.stack, name: e.name }));
+      // --- Reemplazar borrador con nuevo Excel ---
+      case 'REPLACE': {
+        const userResult = await validateRegisteredUser(msg.phone);
+        if (!userResult.ok) {
+          await reply(msg.phone, R.notRegistered(msg.phone));
+          break;
+        }
+        const client = userResult.user!;
+
+        // Cancelar borradores existentes
+        const { data: drafts } = await supabase
+          .from('orders')
+          .select('id, week_label')
+          .eq('organization_id', client.organization_id!)
+          .eq('status', 'draft');
+        if (drafts && drafts.length > 0) {
+          for (const draft of drafts) {
+            await supabase.from('orders').update({ status: 'cancelled' }).eq('id', draft.id);
+            await createOrderEvent({ orderId: draft.id, eventType: 'cancelled', actorId: client.id, actorRole: 'client', payload: { reason: 'replaced_by_client' } });
+          }
+        }
+
+        await reply(msg.phone, R.replacedByNew());
+        // Indicar que esperamos el nuevo Excel
+        await setState(msg.phone, 'idle');
+        break;
+      }
+
+      // --- Consulta de estado ---
+      case 'STATUS': {
+        const userResult = await validateRegisteredUser(msg.phone);
+        if (!userResult.ok) {
+          await reply(msg.phone, R.notRegistered(msg.phone));
+          break;
+        }
+        const client = userResult.user!;
+        const { data: order } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('organization_id', client.organization_id!)
+          .in('status', ['draft', 'confirmed', 'in_production'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!order) {
+          await reply(msg.phone, R.noActiveOrder());
+          break;
+        }
+        await reply(msg.phone, R.orderStatus(order.week_label, order.status, order.total_units), order.id);
+        break;
+      }
+
+      // --- Desglose detallado ---
+      case 'DETAIL': {
+        const userResult = await validateRegisteredUser(msg.phone);
+        if (!userResult.ok) {
+          await reply(msg.phone, R.notRegistered(msg.phone));
+          break;
+        }
+        const client = userResult.user!;
+        const { data: order } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('organization_id', client.organization_id!)
+          .in('status', ['draft', 'confirmed', 'in_production'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!order) {
+          await reply(msg.phone, R.noActiveOrder());
+          break;
+        }
+
+        // Reconstruir ValidatedOrderData desde ai_parsing_log para el detalle
+        const parsed = order.ai_parsing_log;
+        if (parsed && typeof parsed === 'object' && 'days' in parsed) {
+          const detailMsg = formatOrderSummaryDetailed(parsed as Parameters<typeof formatOrderSummaryDetailed>[0]);
+          await replyLong(msg.phone, detailMsg, order.id);
+        } else {
+          await reply(msg.phone, R.orderStatus(order.week_label, order.status, order.total_units), order.id);
         }
         break;
       }
 
-      case 'CANCEL_ORDER': {
-        try {
-          const client = await identifyClient(message.phone);
-          console.log('STEP 4 (CANCEL): client =', client?.id ?? 'NOT FOUND');
-          if (!client) {
-            console.log('STEP 5: sending not-registered reply');
-            await sendWhatsAppMessage(message.phone, '⚠️ No encontré tu cuenta asociada a este número. Contactá a Sheina para registrarte.');
-            console.log('STEP 6: not-registered reply sent');
-            break;
-          }
-
-          const { data: order } = await supabase
-            .from('orders')
-            .select('*, menu:weekly_menus(*)')
-            .eq('organization_id', client.organization_id)
-            .in('status', ['draft', 'confirmed'])
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single();
-
-          if (!order) {
-            console.log('STEP 5: sending no-active-order reply');
-            await sendWhatsAppMessage(message.phone, 'No encontré un pedido activo para cancelar.');
-            console.log('STEP 6: no-active-order reply sent');
-            break;
-          }
-
-          if (order.status === 'confirmed') {
-            const { data: org } = await supabase
-              .from('organizations')
-              .select('cutoff_time, cutoff_days_before')
-              .eq('id', client.organization_id)
-              .single();
-
-            if (org && !isWithinCutoff(order, order.menu, org)) {
-              console.log('STEP 5: sending post-cutoff reply');
-              await sendWhatsAppMessage(
-                message.phone,
-                '⚠️ Ya pasó el horario de corte. Contactá a Sheina para modificar tu pedido.'
-              );
-              console.log('STEP 6: post-cutoff reply sent');
-              break;
-            }
-          }
-
-          await supabase
-            .from('orders')
-            .update({ status: 'cancelled' })
-            .eq('id', order.id);
-
-          await createOrderEvent({
-            orderId: order.id,
-            eventType: 'cancelled',
-            actorId: client.id,
-            actorRole: 'client',
-          });
-
-          console.log('STEP 5: sending cancelled reply to', message.phone);
-          await sendWhatsAppMessage(
-            message.phone,
-            `🚫 Pedido cancelado — ${order.week_label}\n\nSi querés hacer un nuevo pedido, enviame el Excel.`
-          );
-          console.log('STEP 6: cancelled reply sent');
-        } catch (err) {
-          const e = err instanceof Error ? err : new Error(String(err));
-          console.error('STEP FAILED (CANCEL_ORDER):', JSON.stringify({ message: e.message, stack: e.stack, name: e.name }));
-        }
+      // --- Menú (placeholder) ---
+      case 'MENU': {
+        await reply(msg.phone, R.menuNotAvailable());
         break;
       }
 
-      case 'HELP': {
-        try {
-          const client = await identifyClient(message.phone);
-          console.log('STEP 4 (HELP):', JSON.stringify({ phone: message.phone, found: !!client, organizationId: client?.organization_id ?? null }));
-
-          if (!client) {
-            console.log('STEP 5: sending not-registered reply to', message.phone);
-            await sendWhatsAppMessage(
-              message.phone,
-              `⚠️ Tu número *${message.phone}* no está registrado en el sistema de Grupo Sheina.\n\nContactá a Sheina para que te den de alta.`
-            );
-            console.log('STEP 6: not-registered reply sent');
-          } else {
-            console.log('STEP 5: sending help reply to', message.phone);
-            await sendWhatsAppMessage(
-              message.phone,
-              `👋 ¡Hola${client.full_name ? `, ${client.full_name.split(' ')[0]}` : ''}! Soy el asistente de *Grupo Sheina*.\n\nPodés:\n📎 *Enviar tu Excel* de pedidos y lo proceso automáticamente\n✅ Responder *confirmo* para confirmar un pedido\n❌ Responder *cancelar* para anular un pedido\n\n¿En qué te puedo ayudar?`
-            );
-            console.log('STEP 6: help reply sent');
-          }
-        } catch (err) {
-          const e = err instanceof Error ? err : new Error(String(err));
-          console.error('STEP FAILED (HELP):', JSON.stringify({ message: e.message, stack: e.stack, name: e.name }));
-        }
+      // --- Ayuda / default ---
+      case 'HELP':
+      default: {
+        const userResult = await validateRegisteredUser(msg.phone);
+        const name = userResult.ok && userResult.user ? userResult.user.full_name : null;
+        const helpMsg = userResult.ok ? R.greeting(name) : R.notRegistered(msg.phone);
+        await reply(msg.phone, helpMsg);
         break;
       }
     }
 
-    // Retornar 200 a Twilio inmediatamente.
-    // Para PROCESS_EXCEL, el procesamiento continúa en background via after().
     return new NextResponse(
       '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
-      {
-        status: 200,
-        headers: { 'Content-Type': 'text/xml' },
-      }
+      { status: 200, headers: { 'Content-Type': 'text/xml' } }
     );
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
-    console.error('STEP FAILED (UNHANDLED):', JSON.stringify({ message: err.message, stack: err.stack, name: err.name }));
+    console.error('WEBHOOK UNHANDLED ERROR:', JSON.stringify({ message: err.message, stack: err.stack }));
     return new NextResponse(
       '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
       { status: 200, headers: { 'Content-Type': 'text/xml' } }

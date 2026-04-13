@@ -20,6 +20,7 @@ export interface Organization {
   cutoff_time: string; // HH:MM
   cutoff_days_before: number;
   departments: string[];
+  authorized_phones: string[];
   status: OrgStatus;
   created_at: string;
   updated_at: string;
@@ -159,6 +160,27 @@ export interface InventoryMovement {
   created_at: string;
 }
 
+export interface ConversationLog {
+  id: string;
+  phone: string;
+  direction: 'in' | 'out';
+  message_type: string | null;
+  body: string | null;
+  media_url: string | null;
+  order_id: string | null;
+  conv_state: string | null;
+  created_at: string;
+}
+
+export interface OrderToken {
+  id: string;
+  order_id: string;
+  token: string;
+  expires_at: string;
+  used_at: string | null;
+  created_at: string;
+}
+
 // Supabase Database type for client typing
 export interface Database {
   public: {
@@ -222,6 +244,16 @@ export interface Database {
         Row: InventoryMovement;
         Insert: Omit<InventoryMovement, "id" | "created_at">;
         Update: never;
+      };
+      conversation_logs: {
+        Row: ConversationLog;
+        Insert: Omit<ConversationLog, "id" | "created_at">;
+        Update: never;
+      };
+      order_tokens: {
+        Row: OrderToken;
+        Insert: Omit<OrderToken, "id" | "created_at">;
+        Update: Partial<Pick<OrderToken, "used_at">>;
       };
     };
     Views: {
