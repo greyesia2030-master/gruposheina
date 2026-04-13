@@ -8,6 +8,7 @@ import { canViewSalePrice } from "@/lib/permissions";
 import { DAY_NAMES } from "@/lib/types/orders";
 import { isWithinCutoff } from "@/lib/orders/cutoff";
 import { OrderActions } from "./order-actions";
+import { RetryInventoryButton } from "./retry-inventory-button";
 import { OrderTimeline } from "./order-timeline";
 import { OrderLinesEditor } from "./order-lines-editor";
 import {
@@ -22,6 +23,7 @@ import {
 } from "lucide-react";
 import type { OrderStatus, PaymentStatus } from "@/lib/types/database";
 import { formatART } from "@/lib/utils/timezone";
+import { hasRole } from "@/lib/permissions";
 
 const SOURCE_ICONS: Record<string, React.ReactNode> = {
   whatsapp_excel: <MessageSquare className="h-4 w-4 text-green-600" />,
@@ -73,8 +75,8 @@ export default async function PedidoDetailPage({
 
   if (!order) notFound();
 
-  // Cargar líneas y eventos en paralelo
-  const [linesResult, eventsResult] = await Promise.all([
+  // Cargar líneas, eventos y conteo de movimientos de inventario en paralelo
+  const [linesResult, eventsResult, movementsResult] = await Promise.all([
     supabase
       .from("order_lines")
       .select("*")
@@ -86,10 +88,16 @@ export default async function PedidoDetailPage({
       .select("*, actor:users(full_name)")
       .eq("order_id", id)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("inventory_movements")
+      .select("id", { count: "exact", head: true })
+      .eq("reference_id", id)
+      .eq("reference_type", "order"),
   ]);
 
   const lines = linesResult.data ?? [];
   const events = eventsResult.data ?? [];
+  const movementsCount = movementsResult.count ?? 0;
 
   // Supabase many-to-one FK returns a single object, not an array
   const org = order.organization as {
@@ -115,6 +123,12 @@ export default async function PedidoDetailPage({
   // Detectar departamentos usados (orden consistente)
   const departments = [...new Set(lines.map((l) => l.department))].sort();
 
+  // Mostrar botón de recalcular inventario si es admin y el pedido está en producción/entregado sin movimientos
+  const canRetryInventory =
+    hasRole(currentUser.role, "admin") &&
+    ["in_production", "delivered"].includes(order.status) &&
+    movementsCount === 0;
+
   return (
     <div>
       <PageHeader
@@ -124,11 +138,16 @@ export default async function PedidoDetailPage({
           { label: order.week_label },
         ]}
         action={
-          <OrderActions
-            orderId={order.id}
-            status={order.status as OrderStatus}
-            isWithinCutoff={withinCutoff}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            {canRetryInventory && (
+              <RetryInventoryButton orderId={order.id} />
+            )}
+            <OrderActions
+              orderId={order.id}
+              status={order.status as OrderStatus}
+              isWithinCutoff={withinCutoff}
+            />
+          </div>
         }
       />
 

@@ -12,61 +12,28 @@ interface CreateMovementInput {
   referenceId?: string;
 }
 
-const POSITIVE_TYPES: MovementType[] = ["purchase", "adjustment_pos", "return"];
-
 /**
- * Registra un movimiento de inventario y actualiza el stock.
+ * Registra un movimiento de inventario usando la RPC atómica `fn_update_stock`.
+ * La operación es atómica: UPDATE stock + INSERT movement en una sola transacción.
+ * La RPC maneja el signo del qty según el movement_type (no pasar negativo).
+ * Lanza excepción si el stock quedaría negativo (excepto adjustment_neg).
  */
-export async function registerMovement(input: CreateMovementInput) {
+export async function registerMovement(input: CreateMovementInput): Promise<void> {
   const supabase = await createSupabaseAdmin();
-
-  // Obtener stock actual
-  const { data: item, error: fetchError } = await supabase
-    .from("inventory_items")
-    .select("current_stock, cost_per_unit")
-    .eq("id", input.itemId)
-    .single();
-
-  if (fetchError || !item) {
-    throw new Error("Insumo no encontrado");
-  }
-
   const absQty = Math.abs(input.quantity);
-  const isPositive = POSITIVE_TYPES.includes(input.movementType);
-  const newStock = isPositive
-    ? item.current_stock + absQty
-    : item.current_stock - absQty;
 
-  // Actualizar stock
-  const { error: updateError } = await supabase
-    .from("inventory_items")
-    .update({ current_stock: newStock })
-    .eq("id", input.itemId);
+  const { error } = await supabase.rpc("fn_update_stock", {
+    p_item_id: input.itemId,
+    p_qty: absQty,
+    p_movement_type: input.movementType,
+    p_reason: input.reason ?? null,
+    p_actor_id: input.actorId ?? null,
+    p_unit_cost: input.unitCost ?? null,
+    p_reference_type: input.referenceType ?? null,
+    p_reference_id: input.referenceId ?? null,
+  });
 
-  if (updateError) {
-    throw new Error(`Error actualizando stock: ${updateError.message}`);
+  if (error) {
+    throw new Error(error.message);
   }
-
-  // Registrar movimiento
-  const { data: movement, error: movError } = await supabase
-    .from("inventory_movements")
-    .insert({
-      item_id: input.itemId,
-      movement_type: input.movementType,
-      quantity: isPositive ? absQty : -absQty,
-      unit_cost: input.unitCost ?? item.cost_per_unit,
-      reference_type: input.referenceType ?? null,
-      reference_id: input.referenceId ?? null,
-      reason: input.reason ?? null,
-      actor_id: input.actorId ?? null,
-      stock_after: newStock,
-    })
-    .select()
-    .single();
-
-  if (movError) {
-    throw new Error(`Error registrando movimiento: ${movError.message}`);
-  }
-
-  return movement;
 }

@@ -111,7 +111,26 @@ export async function transitionOrderStatus(
 
   // Descuento de inventario al pasar a producción
   if (data.newStatus === "in_production") {
-    await consumeInventoryForOrder(data.orderId, auth.user.id);
+    const issues = await consumeInventoryForOrder(data.orderId, auth.user.id);
+    if (issues.length > 0) {
+      console.error("[INVENTORY] in_production — fallo parcial:", issues);
+    }
+  }
+
+  // También disparar si pasa directo a entregado sin haber pasado por in_production
+  if (data.newStatus === "delivered") {
+    const supabase = await createSupabaseAdmin();
+    const { count } = await supabase
+      .from("inventory_movements")
+      .select("id", { count: "exact", head: true })
+      .eq("reference_id", data.orderId)
+      .eq("reference_type", "order");
+    if ((count ?? 0) === 0) {
+      const issues = await consumeInventoryForOrder(data.orderId, auth.user.id);
+      if (issues.length > 0) {
+        console.error("[INVENTORY] delivered fallback — fallo parcial:", issues);
+      }
+    }
   }
 
   revalidatePath("/pedidos");
@@ -250,7 +269,8 @@ export async function updateOrderLines(
 // consumeInventoryForOrder — descuenta insumos al pasar un pedido a producción
 // ============================================================================
 
-async function consumeInventoryForOrder(orderId: string, actorId: string): Promise<void> {
+async function consumeInventoryForOrder(orderId: string, actorId: string): Promise<string[]> {
+  const issues: string[] = [];
   const supabase = await createSupabaseAdmin();
 
   // 1. Obtener pedido con menu_id
@@ -259,14 +279,20 @@ async function consumeInventoryForOrder(orderId: string, actorId: string): Promi
     .select("menu_id, organization_id")
     .eq("id", orderId)
     .single();
-  if (!order?.menu_id) return; // sin menú, no hay recetas que cruzar
+  if (!order?.menu_id) {
+    issues.push(`[INVENTORY] Pedido ${orderId.slice(0, 8)} no tiene menu_id — sin recetas que cruzar`);
+    return issues;
+  }
 
   // 2. Obtener todas las líneas del pedido, sumar cantidades por (option_code, day_of_week)
   const { data: lines } = await supabase
     .from("order_lines")
     .select("option_code, day_of_week, quantity")
     .eq("order_id", orderId);
-  if (!lines || lines.length === 0) return;
+  if (!lines || lines.length === 0) {
+    issues.push(`[INVENTORY] Pedido ${orderId.slice(0, 8)} no tiene líneas`);
+    return issues;
+  }
 
   // Agrupar: { "A_1": 35, "B_1": 28, ... }
   const totalsPerOption: Record<string, number> = {};
@@ -277,7 +303,10 @@ async function consumeInventoryForOrder(orderId: string, actorId: string): Promi
 
   // 3. Para cada opción, obtener recipe_version_id desde menu_items
   const uniqueOptions = Object.entries(totalsPerOption).filter(([, qty]) => qty > 0);
-  if (uniqueOptions.length === 0) return;
+  if (uniqueOptions.length === 0) {
+    issues.push(`[INVENTORY] Todas las líneas del pedido tienen cantidad 0`);
+    return issues;
+  }
 
   // Map: option_code+day → recipe_version_id
   const recipeVersionMap: Record<string, string> = {};
@@ -297,13 +326,19 @@ async function consumeInventoryForOrder(orderId: string, actorId: string): Promi
 
   // 4. Obtener ingredientes para cada recipe_version_id
   const recipeVersionIds = [...new Set(Object.values(recipeVersionMap))];
-  if (recipeVersionIds.length === 0) return;
+  if (recipeVersionIds.length === 0) {
+    issues.push(`[INVENTORY] Ninguna opción del pedido tiene receta vinculada en el menú`);
+    return issues;
+  }
 
   const { data: ingredients } = await supabase
     .from("recipe_ingredients")
     .select("recipe_version_id, inventory_item_id, quantity")
     .in("recipe_version_id", recipeVersionIds);
-  if (!ingredients || ingredients.length === 0) return;
+  if (!ingredients || ingredients.length === 0) {
+    issues.push(`[INVENTORY] Las recetas vinculadas no tienen ingredientes configurados`);
+    return issues;
+  }
 
   // 5. Calcular total por insumo: suma de (qty_por_receta × porciones_producidas)
   const consumptionMap: Record<string, number> = {}; // inventory_item_id → total qty
@@ -318,7 +353,7 @@ async function consumeInventoryForOrder(orderId: string, actorId: string): Promi
     }
   }
 
-  // 6. Registrar movimientos de production_consumption
+  // 6. Registrar movimientos de production_consumption (atómicos via RPC)
   const errors: string[] = [];
   for (const [itemId, totalQty] of Object.entries(consumptionMap)) {
     if (totalQty <= 0) continue;
@@ -338,8 +373,63 @@ async function consumeInventoryForOrder(orderId: string, actorId: string): Promi
   }
 
   if (errors.length > 0) {
-    console.error("INVENTORY: partial failure consuming stock:", errors);
+    console.error("[INVENTORY] Fallo parcial al consumir stock:", errors);
+    issues.push(...errors);
   } else {
-    console.log(`INVENTORY: consumed ${Object.keys(consumptionMap).length} items for order ${orderId}`);
+    console.log(`[INVENTORY] Consumidos ${Object.keys(consumptionMap).length} insumos para pedido ${orderId.slice(0, 8)}`);
   }
+
+  return issues;
+}
+
+// ============================================================================
+// retryInventoryConsumption — remediación manual para admin
+// ============================================================================
+
+export async function retryInventoryConsumption(
+  orderId: string
+): Promise<{ ok: true; consumed: number } | { ok: false; error: string }> {
+  const auth = await handleAuth();
+  if (!auth.ok) return auth;
+
+  const supabase = await createSupabaseAdmin();
+
+  // Solo pedidos en producción o entregados
+  const { data: order } = await supabase
+    .from("orders")
+    .select("status")
+    .eq("id", orderId)
+    .single();
+
+  if (!order) return { ok: false, error: "Pedido no encontrado" };
+  if (!["in_production", "delivered"].includes(order.status)) {
+    return { ok: false, error: "Solo se puede recalcular pedidos en producción o entregados" };
+  }
+
+  // Verificar si ya hay movimientos para este pedido
+  const { count: existingCount } = await supabase
+    .from("inventory_movements")
+    .select("id", { count: "exact", head: true })
+    .eq("reference_id", orderId)
+    .eq("reference_type", "order");
+
+  if ((existingCount ?? 0) > 0) {
+    return { ok: false, error: `Ya existen ${existingCount} movimientos para este pedido` };
+  }
+
+  const issues = await consumeInventoryForOrder(orderId, auth.user.id);
+  if (issues.length > 0) {
+    return { ok: false, error: issues.join(" | ") };
+  }
+
+  // Count created movements
+  const { count: newCount } = await supabase
+    .from("inventory_movements")
+    .select("id", { count: "exact", head: true })
+    .eq("reference_id", orderId)
+    .eq("reference_type", "order");
+
+  revalidatePath(`/pedidos/${orderId}`);
+  revalidatePath("/inventario");
+  return { ok: true, consumed: newCount ?? 0 };
 }
