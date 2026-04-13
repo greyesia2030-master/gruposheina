@@ -53,15 +53,19 @@ src/
 │   │   ├── clientes/
 │   │   │   └── page.tsx          # Lista de organizaciones
 │   │   └── layout.tsx            # Layout con sidebar
+│   ├── actions/
+│   │   ├── orders.ts           # Server Actions de pedidos:
+│   │   │                       #   transitionOrderStatus, updateOrderLines,
+│   │   │                       #   retryInventoryConsumption,
+│   │   │                       #   checkStockForOrder (stock check pre-producción),
+│   │   │                       #   sendReminderToClient (WhatsApp recordatorio para borradores)
+│   │   ├── menus.ts            # Server Actions de menús
+│   │   ├── recipes.ts          # Server Actions de recetas
+│   │   ├── inventory.ts        # Server Actions de inventario
+│   │   └── clientes/actions.ts # Server Actions de organizaciones y usuarios
 │   └── api/
-│       ├── webhook/whatsapp/route.ts   # Webhook de Twilio
-│       ├── parse-excel/route.ts        # Parsing con IA
-│       └── orders/
-│           ├── route.ts                # GET lista, POST crear
-│           └── [id]/
-│               ├── route.ts            # GET detalle, PATCH actualizar
-│               ├── confirm/route.ts    # POST confirmar
-│               └── events/route.ts     # GET eventos
+│       ├── webhook/whatsapp/route.ts   # Webhook de Twilio (valida firma, rate limit, MessageSid dedup)
+│       └── parse-excel/route.ts        # Parsing con IA (usado en desarrollo/testing)
 ├── lib/
 │   ├── supabase/
 │   │   ├── client.ts             # Cliente browser (con cookies)
@@ -73,16 +77,23 @@ src/
 │   │       ├── parse-excel.ts    # System prompt para parsing de Excel
 │   │       └── assistant.ts      # System prompt para asistente WA
 │   ├── whatsapp/
-│   │   ├── send-message.ts       # Enviar mensajes via Twilio
-│   │   ├── receive-message.ts    # Procesar mensajes entrantes
-│   │   └── format-summary.ts    # Formatear resumen de pedido para WA
+│   │   ├── send-message.ts       # Enviar mensajes via Twilio (simple, long chunked, file)
+│   │   ├── receive-message.ts    # identifyClient — resuelve phone → user+org
+│   │   ├── classify-message.ts   # classifyMessage — clasifica intención en 8 tipos
+│   │   ├── responses.ts          # R / responses — todas las plantillas de texto WA
+│   │   ├── validations.ts        # validateOrgActive, validateNoDuplicate, checkConfirmedOrderForWeek
+│   │   ├── audit-log.ts          # logConversation — append-only en conversation_logs (con message_sid)
+│   │   ├── conversation-state.ts # getClientContext, setState — estado de conversación por org
+│   │   └── format-summary.ts     # formatCompactSummary, formatMultiWeekSummary, formatOrderSummaryDetailed
 │   ├── excel/
-│   │   ├── sheina-parser.ts      # Parser específico del formato Sheina
+│   │   ├── sheina-parser.ts      # Parser del formato Sheina
+│   │   │                         # IMPORTANTE: agrupa filas por dayOfWeek NUMÉRICO (col B repite el nombre 7× por día)
+│   │   │                         # totalUnits usa la celda TOTALES como valor autoritativo (no la suma calculada)
 │   │   └── types.ts              # Tipos del Excel parseado
 │   ├── orders/
-│   │   ├── state-machine.ts      # Máquina de estados del pedido
-│   │   ├── cutoff.ts             # Lógica de ventana de corte
-│   │   └── events.ts             # Crear eventos de auditoría
+│   │   ├── state-machine.ts      # Máquina de estados del pedido (5 transiciones, rol-dependiente)
+│   │   ├── cutoff.ts             # Ventana de corte — usa ART_TZ (America/Argentina/Buenos_Aires), DST-safe
+│   │   └── events.ts             # Crear eventos de auditoría (append-only)
 │   ├── inventory/
 │   │   ├── movements.ts          # Registrar movimientos de stock
 │   │   └── alerts.ts             # Lógica de alertas de mínimo
