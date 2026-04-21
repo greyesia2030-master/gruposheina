@@ -61,6 +61,11 @@ export const MOVEMENT_TYPE_LABELS: Record<MovementType, string> = {
   adjustment_pos: "Ajuste (+)",
   adjustment_neg: "Ajuste (-)",
   return: "Devolución",
+  transfer_out: "Transferencia salida",
+  transfer_in: "Transferencia entrada",
+  cook_consumption: "Consumo cocina",
+  waste_pending: "Merma pendiente",
+  waste_approved: "Merma aprobada",
 };
 
 export const MOVEMENT_TYPE_COLORS: Record<MovementType, string> = {
@@ -70,4 +75,9 @@ export const MOVEMENT_TYPE_COLORS: Record<MovementType, string> = {
   adjustment_pos: "text-blue-600",
   adjustment_neg: "text-blue-600",
   return: "text-purple-600",
+  transfer_out: "text-amber-600",
+  transfer_in: "text-teal-600",
+  cook_consumption: "text-red-500",
+  waste_pending: "text-orange-400",
+  waste_approved: "text-orange-700",
 };

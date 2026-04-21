@@ -6,11 +6,13 @@
 import type { OrderStatus } from '@/lib/types/database';
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
-  draft:         'Borrador ⏳',
-  confirmed:     'Confirmado ✅',
-  in_production: 'En producción 🍳',
-  delivered:     'Entregado 📦',
-  cancelled:     'Cancelado ❌',
+  draft:                 'Borrador ⏳',
+  confirmed:             'Confirmado ✅',
+  in_production:         'En producción 🍳',
+  delivered:             'Entregado 📦',
+  cancelled:             'Cancelado ❌',
+  partially_filled:      'Parcialmente completado 📋',
+  awaiting_confirmation: 'Esperando confirmación ⏳',
 };
 
 export const R = {

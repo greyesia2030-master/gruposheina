@@ -42,6 +42,8 @@ const ORDER_STATUSES = [
   "in_production",
   "delivered",
   "cancelled",
+  "partially_filled",
+  "awaiting_confirmation",
 ] as const satisfies readonly OrderStatus[];
 
 const transitionSchema = z.object({

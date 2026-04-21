@@ -28,19 +28,23 @@ export function Badge({ children, variant = "default", className = "" }: BadgePr
 // ── Badge tipado para estados de pedido ───────────────────────────────────────
 
 const ORDER_STATUS_STYLES: Record<OrderStatus, string> = {
-  draft:         "bg-gray-100 text-gray-700",
-  confirmed:     "bg-blue-100 text-blue-700",
-  in_production: "bg-amber-100 text-amber-800",
-  delivered:     "bg-green-100 text-green-700",
-  cancelled:     "bg-red-100 text-red-700",
+  draft:                  "bg-gray-100 text-gray-700",
+  confirmed:              "bg-blue-100 text-blue-700",
+  in_production:          "bg-amber-100 text-amber-800",
+  delivered:              "bg-green-100 text-green-700",
+  cancelled:              "bg-red-100 text-red-700",
+  partially_filled:       "bg-yellow-100 text-yellow-800",
+  awaiting_confirmation:  "bg-purple-100 text-purple-700",
 };
 
 const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
-  draft:         "Borrador",
-  confirmed:     "Confirmado",
-  in_production: "En producción",
-  delivered:     "Entregado",
-  cancelled:     "Cancelado",
+  draft:                  "Borrador",
+  confirmed:              "Confirmado",
+  in_production:          "En producción",
+  delivered:              "Entregado",
+  cancelled:              "Cancelado",
+  partially_filled:       "Parcialmente completado",
+  awaiting_confirmation:  "Esperando confirmación",
 };
 
 export function OrderStatusBadge({

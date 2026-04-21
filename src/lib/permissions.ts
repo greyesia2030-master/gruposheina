@@ -4,6 +4,8 @@ const ROLE_HIERARCHY: Record<UserRole, number> = {
   superadmin: 5,
   admin: 4,
   operator: 3,
+  kitchen: 2,
+  warehouse: 2,
   client_admin: 2,
   client_user: 1,
 };
