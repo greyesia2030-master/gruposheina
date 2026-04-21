@@ -1,49 +1,477 @@
 "use server";
+import "server-only";
 
-// WARN: uses service_role — all calls must validate token ownership before mutating
-
-import type { OrderFormToken, OrderSection, OrderParticipant, MenuItem } from "@/lib/types/database";
+import { createAdminClient } from "@/lib/supabase/admin-client";
+import type { MenuItem, OrderParticipant, OrderSection, OrderFormToken } from "@/lib/types/database";
 import type { OrderParticipantWithLines } from "@/lib/types/order-participant";
 
 type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
-export async function resolveFormToken(
-  _token: string
-): Promise<ActionResult<{ formToken: OrderFormToken; sections: OrderSection[] }>> {
-  throw new Error("Not implemented");
+function ts() {
+  return new Date().toISOString().replace("T", " ").slice(0, 19);
 }
+
+// ─── getSharedFormData ────────────────────────────────────────────────────────
+// Punto de entrada principal del formulario público.
+// Valida el token y retorna todo lo necesario para renderizar el formulario.
+
+export async function getSharedFormData(token: string): Promise<
+  ActionResult<{
+    orderId: string;
+    menuId: string;
+    organizationId: string;
+    sectionNames: { id: string; name: string }[];
+    items: MenuItem[];
+  }>
+> {
+  const db = createAdminClient();
+
+  const { data: tokenRow, error } = await db
+    .from("order_form_tokens")
+    .select("*")
+    .eq("token", token)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (error || !tokenRow) {
+    console.log(`[${ts()}] getSharedFormData: token not found — ${token.slice(0, 8)}...`);
+    return { ok: false, error: "invalid" };
+  }
+
+  if (new Date(tokenRow.valid_until) < new Date()) {
+    console.log(`[${ts()}] getSharedFormData: token expired — ${token.slice(0, 8)}...`);
+    return { ok: false, error: "expired" };
+  }
+
+  if (tokenRow.used_count >= tokenRow.max_uses) {
+    console.log(`[${ts()}] getSharedFormData: token maxed out — ${token.slice(0, 8)}...`);
+    return { ok: false, error: "maxed_out" };
+  }
+
+  if (!tokenRow.order_id || !tokenRow.menu_id) {
+    return { ok: false, error: "invalid" };
+  }
+
+  const [sectionsRes, itemsRes] = await Promise.all([
+    db
+      .from("order_sections")
+      .select("id, name, display_order")
+      .eq("order_id", tokenRow.order_id)
+      .order("display_order", { ascending: true }),
+    db
+      .from("menu_items")
+      .select("*")
+      .eq("menu_id", tokenRow.menu_id)
+      .eq("is_available", true)
+      .eq("is_published_to_form", true)
+      .order("day_of_week", { ascending: true }),
+  ]);
+
+  const sections = sectionsRes.data ?? [];
+  const items = itemsRes.data ?? [];
+
+  console.log(
+    `[${ts()}] getSharedFormData: ok — order ${tokenRow.order_id.slice(0, 8)}, ` +
+    `${sections.length} secciones, ${items.length} items`
+  );
+
+  return {
+    ok: true,
+    data: {
+      orderId: tokenRow.order_id,
+      menuId: tokenRow.menu_id,
+      organizationId: tokenRow.organization_id,
+      sectionNames: sections.map((s) => ({ id: s.id, name: s.name })),
+      items: items as unknown as MenuItem[],
+    },
+  };
+}
+
+// ─── resolveFormToken ─────────────────────────────────────────────────────────
+// Retorna el token crudo + secciones. Usado internamente y por el layout público.
+
+export async function resolveFormToken(
+  token: string
+): Promise<ActionResult<{ formToken: OrderFormToken; sections: OrderSection[] }>> {
+  const db = createAdminClient();
+
+  const { data: tokenRow, error } = await db
+    .from("order_form_tokens")
+    .select("*")
+    .eq("token", token)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (error || !tokenRow) return { ok: false, error: "Token inválido o expirado" };
+  if (new Date(tokenRow.valid_until) < new Date()) return { ok: false, error: "Token expirado" };
+  if (tokenRow.used_count >= tokenRow.max_uses) return { ok: false, error: "Token agotado" };
+  if (!tokenRow.order_id) return { ok: false, error: "Token sin pedido asociado" };
+
+  const { data: sections } = await db
+    .from("order_sections")
+    .select("*")
+    .eq("order_id", tokenRow.order_id)
+    .order("display_order", { ascending: true });
+
+  return {
+    ok: true,
+    data: {
+      formToken: tokenRow as unknown as OrderFormToken,
+      sections: (sections ?? []) as unknown as OrderSection[],
+    },
+  };
+}
+
+// ─── joinSection ──────────────────────────────────────────────────────────────
+// Registra un participante en una sección. Incrementa used_count del token.
 
 export async function joinSection(
-  _token: string,
-  _sectionId: string,
-  _displayName: string
+  token: string,
+  sectionId: string,
+  displayName: string
 ): Promise<ActionResult<OrderParticipant>> {
-  throw new Error("Not implemented");
+  const db = createAdminClient();
+
+  // Re-validate token
+  const tokenRes = await resolveFormToken(token);
+  if (!tokenRes.ok) return tokenRes;
+  const { formToken } = tokenRes.data;
+
+  // Verify sectionId belongs to this token's order
+  const { data: section } = await db
+    .from("order_sections")
+    .select("id, order_id, closed_at")
+    .eq("id", sectionId)
+    .maybeSingle();
+
+  if (!section) return { ok: false, error: "Sección no encontrada" };
+  if (section.order_id !== formToken.order_id) return { ok: false, error: "Sección no pertenece a este formulario" };
+  if (section.closed_at) return { ok: false, error: "La sección ya está cerrada" };
+
+  // Create participant
+  const { data: participant, error: insertError } = await db
+    .from("order_participants")
+    .insert({
+      order_id: formToken.order_id!,
+      section_id: sectionId,
+      display_name: displayName.trim(),
+      form_token_id: formToken.id,
+      first_seen_at: new Date().toISOString(),
+      last_activity_at: new Date().toISOString(),
+    })
+    .select("*")
+    .single();
+
+  if (insertError || !participant) {
+    console.error(`[${ts()}] joinSection: insert error`, insertError?.message);
+    return { ok: false, error: insertError?.message ?? "Error al registrar participante" };
+  }
+
+  // Increment token used_count
+  await db
+    .from("order_form_tokens")
+    .update({ used_count: formToken.used_count + 1 })
+    .eq("id", formToken.id);
+
+  console.log(`[${ts()}] joinSection: ok — participant ${participant.id.slice(0, 8)}, section ${sectionId.slice(0, 8)}`);
+  return { ok: true, data: participant as unknown as OrderParticipant };
 }
+
+// ─── getMenuItemsForToken ─────────────────────────────────────────────────────
 
 export async function getMenuItemsForToken(
-  _token: string
+  token: string
 ): Promise<ActionResult<MenuItem[]>> {
-  throw new Error("Not implemented");
+  const db = createAdminClient();
+
+  const { data: tokenRow } = await db
+    .from("order_form_tokens")
+    .select("menu_id, is_active, valid_until")
+    .eq("token", token)
+    .maybeSingle();
+
+  if (!tokenRow?.is_active || !tokenRow.menu_id) return { ok: false, error: "Token inválido" };
+  if (new Date(tokenRow.valid_until) < new Date()) return { ok: false, error: "Token expirado" };
+
+  const { data: items, error } = await db
+    .from("menu_items")
+    .select("*")
+    .eq("menu_id", tokenRow.menu_id)
+    .eq("is_available", true)
+    .eq("is_published_to_form", true)
+    .order("day_of_week", { ascending: true });
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, data: (items ?? []) as unknown as MenuItem[] };
 }
+
+// ─── getParticipantCart ───────────────────────────────────────────────────────
 
 export async function getParticipantCart(
-  _accessToken: string
+  accessToken: string
 ): Promise<ActionResult<OrderParticipantWithLines>> {
-  throw new Error("Not implemented");
+  const db = createAdminClient();
+
+  const { data: participant } = await db
+    .from("order_participants")
+    .select("*")
+    .eq("access_token", accessToken)
+    .maybeSingle();
+
+  if (!participant) return { ok: false, error: "Participante no encontrado" };
+
+  const { data: lines } = await db
+    .from("order_lines")
+    .select("*")
+    .eq("order_id", participant.order_id)
+    .eq("participant_id", participant.id);
+
+  return {
+    ok: true,
+    data: {
+      ...(participant as unknown as OrderParticipant),
+      lines: lines ?? [],
+    },
+  };
 }
+
+// ─── upsertCartLine ───────────────────────────────────────────────────────────
+// quantity=0 elimina la línea existente si la hay.
 
 export async function upsertCartLine(
-  _accessToken: string,
-  _menuItemId: string,
-  _dayOfWeek: number,
-  _quantity: number
+  accessToken: string,
+  menuItemId: string,
+  dayOfWeek: number,
+  quantity: number
 ): Promise<ActionResult<void>> {
-  throw new Error("Not implemented");
+  const db = createAdminClient();
+
+  const { data: participant } = await db
+    .from("order_participants")
+    .select("id, order_id, section_id")
+    .eq("access_token", accessToken)
+    .maybeSingle();
+
+  if (!participant) return { ok: false, error: "Participante no encontrado" };
+  if (!participant.section_id) return { ok: false, error: "Participante sin sección asignada" };
+
+  // Check section is still open
+  const { data: section } = await db
+    .from("order_sections")
+    .select("closed_at")
+    .eq("id", participant.section_id)
+    .maybeSingle();
+
+  if (section?.closed_at) return { ok: false, error: "La sección ya fue cerrada" };
+
+  // Find existing line for this participant + item + day
+  const { data: existing } = await db
+    .from("order_lines")
+    .select("id")
+    .eq("order_id", participant.order_id)
+    .eq("participant_id", participant.id)
+    .eq("menu_item_id", menuItemId)
+    .eq("day_of_week", dayOfWeek)
+    .maybeSingle();
+
+  if (quantity <= 0) {
+    if (existing) {
+      await db.from("order_lines").delete().eq("id", existing.id);
+    }
+    await db
+      .from("order_participants")
+      .update({ last_activity_at: new Date().toISOString() })
+      .eq("id", participant.id);
+    return { ok: true, data: undefined };
+  }
+
+  if (existing) {
+    const { error } = await db
+      .from("order_lines")
+      .update({ quantity })
+      .eq("id", existing.id);
+    if (error) return { ok: false, error: error.message };
+  } else {
+    // Fetch menu item for option_code + display_name
+    const { data: menuItem } = await db
+      .from("menu_items")
+      .select("option_code, display_name")
+      .eq("id", menuItemId)
+      .maybeSingle();
+
+    if (!menuItem) return { ok: false, error: "Opción de menú no encontrada" };
+
+    const { error } = await db.from("order_lines").insert({
+      order_id: participant.order_id,
+      menu_item_id: menuItemId,
+      day_of_week: dayOfWeek,
+      department: "participante",
+      quantity,
+      unit_price: 0,
+      option_code: menuItem.option_code,
+      display_name: menuItem.display_name,
+      section_id: participant.section_id,
+      participant_id: participant.id,
+    });
+    if (error) return { ok: false, error: error.message };
+  }
+
+  await db
+    .from("order_participants")
+    .update({ last_activity_at: new Date().toISOString() })
+    .eq("id", participant.id);
+
+  return { ok: true, data: undefined };
 }
 
+// ─── submitCart ───────────────────────────────────────────────────────────────
+// Cierra la sección del participante. El trigger DB promueve el order si todas cerradas.
+
 export async function submitCart(
-  _accessToken: string
-): Promise<ActionResult<void>> {
-  throw new Error("Not implemented");
+  accessToken: string
+): Promise<ActionResult<{ allSectionsClosed: boolean }>> {
+  const db = createAdminClient();
+
+  const { data: participant } = await db
+    .from("order_participants")
+    .select("id, section_id")
+    .eq("access_token", accessToken)
+    .maybeSingle();
+
+  if (!participant) return { ok: false, error: "Participante no encontrado" };
+  if (!participant.section_id) return { ok: false, error: "Participante sin sección asignada" };
+
+  return closeOrderSectionFromPublicForm(participant.section_id, participant.id);
+}
+
+// ─── recordOrderLineFromPublicForm ────────────────────────────────────────────
+// INSERT directo en order_lines con validación de sección abierta.
+
+export async function recordOrderLineFromPublicForm(params: {
+  orderId: string;
+  sectionId: string;
+  participantId: string;
+  menuItemId: string;
+  quantity: number;
+  dayOfWeek: number;
+}): Promise<ActionResult<{ lineId: string }>> {
+  const db = createAdminClient();
+  const { orderId, sectionId, participantId, menuItemId, quantity, dayOfWeek } = params;
+
+  // Validate section is open and belongs to order
+  const { data: section } = await db
+    .from("order_sections")
+    .select("id, closed_at, order_id")
+    .eq("id", sectionId)
+    .maybeSingle();
+
+  if (!section) return { ok: false, error: "Sección no encontrada" };
+  if (section.closed_at) return { ok: false, error: "La sección ya está cerrada" };
+  if (section.order_id !== orderId) return { ok: false, error: "Sección no pertenece al pedido" };
+
+  // Validate participant belongs to section
+  const { data: participant } = await db
+    .from("order_participants")
+    .select("id, section_id")
+    .eq("id", participantId)
+    .maybeSingle();
+
+  if (!participant) return { ok: false, error: "Participante no encontrado" };
+  if (participant.section_id !== sectionId) return { ok: false, error: "Participante no pertenece a la sección" };
+
+  // Fetch menu item
+  const { data: menuItem } = await db
+    .from("menu_items")
+    .select("option_code, display_name")
+    .eq("id", menuItemId)
+    .maybeSingle();
+
+  if (!menuItem) return { ok: false, error: "Opción de menú no encontrada" };
+
+  const { data: line, error: insertError } = await db
+    .from("order_lines")
+    .insert({
+      order_id: orderId,
+      menu_item_id: menuItemId,
+      day_of_week: dayOfWeek,
+      department: "participante",
+      quantity,
+      unit_price: 0,
+      option_code: menuItem.option_code,
+      display_name: menuItem.display_name,
+      section_id: sectionId,
+      participant_id: participantId,
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !line) {
+    console.error(`[${ts()}] recordOrderLineFromPublicForm: error`, insertError?.message);
+    return { ok: false, error: insertError?.message ?? "Error al registrar la línea" };
+  }
+
+  await db
+    .from("order_participants")
+    .update({ last_activity_at: new Date().toISOString() })
+    .eq("id", participantId);
+
+  console.log(`[${ts()}] recordOrderLineFromPublicForm: ok — line ${line.id.slice(0, 8)}, qty ${quantity}`);
+  return { ok: true, data: { lineId: line.id } };
+}
+
+// ─── closeOrderSectionFromPublicForm ─────────────────────────────────────────
+// Cierra la sección vía fn_close_order_section (que calcula totales).
+// El trigger trg_check_sections_closed promueve el order automáticamente.
+
+export async function closeOrderSectionFromPublicForm(
+  sectionId: string,
+  participantId: string
+): Promise<ActionResult<{ allSectionsClosed: boolean }>> {
+  const db = createAdminClient();
+
+  // Validate participant belongs to section
+  const { data: participant } = await db
+    .from("order_participants")
+    .select("id, section_id, order_id")
+    .eq("id", participantId)
+    .maybeSingle();
+
+  if (!participant) return { ok: false, error: "Participante no encontrado" };
+  if (participant.section_id !== sectionId) return { ok: false, error: "Participante no pertenece a la sección" };
+
+  // Close section via DB function — trigger fires and updates order status
+  const { error: rpcError } = await db.rpc("fn_close_order_section", {
+    p_section_id: sectionId,
+    p_participant_id: participantId,
+  });
+
+  if (rpcError) {
+    console.error(`[${ts()}] closeOrderSectionFromPublicForm: rpc error`, rpcError.message);
+    return { ok: false, error: rpcError.message };
+  }
+
+  // Mark participant submitted
+  await db
+    .from("order_participants")
+    .update({
+      submitted_at: new Date().toISOString(),
+      last_activity_at: new Date().toISOString(),
+    })
+    .eq("id", participantId);
+
+  // Check order status — trigger sets 'awaiting_confirmation' when all sections closed
+  const { data: order } = await db
+    .from("orders")
+    .select("status")
+    .eq("id", participant.order_id)
+    .maybeSingle();
+
+  const allSectionsClosed = order?.status === "awaiting_confirmation";
+
+  console.log(
+    `[${ts()}] closeOrderSectionFromPublicForm: ok — section ${sectionId.slice(0, 8)}, ` +
+    `allClosed=${allSectionsClosed}`
+  );
+
+  return { ok: true, data: { allSectionsClosed } };
 }
