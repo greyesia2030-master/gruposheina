@@ -15,6 +15,39 @@ import type { InboxFilters } from "@/lib/types/communication-thread";
 
 type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
+export async function upsertCommunicationTemplate(
+  id: string | null,
+  data: {
+    name: string;
+    channel: CommunicationChannel;
+    category: CommunicationCategory;
+    subject: string | null;
+    body: string;
+    is_active: boolean;
+  }
+): Promise<ActionResult<CommunicationTemplate>> {
+  const supabase = createAdminClient();
+
+  if (id) {
+    const { data: tmpl, error } = await supabase
+      .from("communication_templates")
+      .update(data)
+      .eq("id", id)
+      .select()
+      .single();
+    if (error || !tmpl) return { ok: false, error: error?.message ?? "Not found" };
+    return { ok: true, data: tmpl as unknown as CommunicationTemplate };
+  } else {
+    const { data: tmpl, error } = await supabase
+      .from("communication_templates")
+      .insert({ ...data, variables: [] })
+      .select()
+      .single();
+    if (error || !tmpl) return { ok: false, error: error?.message ?? "Insert failed" };
+    return { ok: true, data: tmpl as unknown as CommunicationTemplate };
+  }
+}
+
 export async function sendCommunication(
   organizationId: string,
   channel: CommunicationChannel,
