@@ -14,6 +14,7 @@ import { SendReminderButton } from "./send-reminder-button";
 import { StockCheckPanel } from "./stock-check-panel";
 import { OrderTimeline } from "./order-timeline";
 import { OrderLinesEditor } from "./order-lines-editor";
+import Link from "next/link";
 import {
   Building2,
   Calendar,
@@ -23,6 +24,8 @@ import {
   Globe,
   Phone,
   DollarSign,
+  Share2,
+  Users,
 } from "lucide-react";
 import type { OrderStatus, PaymentStatus } from "@/lib/types/database";
 import { formatART } from "@/lib/utils/timezone";
@@ -152,6 +155,20 @@ export default async function PedidoDetailPage({
         ]}
         action={
           <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={`/pedidos/${id}/compartir`}
+              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-secondary hover:bg-surface-hover transition-colors"
+            >
+              <Share2 className="h-4 w-4" />
+              Compartir link
+            </Link>
+            <Link
+              href={`/pedidos/${id}/participantes`}
+              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-secondary hover:bg-surface-hover transition-colors"
+            >
+              <Users className="h-4 w-4" />
+              Participantes
+            </Link>
             {canSendReminder && <SendReminderButton orderId={order.id} />}
             {false && canRetryInventory && <RetryInventoryButton orderId={order.id} />}
             <OrderActions
