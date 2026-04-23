@@ -19,6 +19,7 @@ import { convertWeekToValidated } from '@/lib/ai/claude-client';
 import { createOrderEvent } from '@/lib/orders/events';
 import { isWithinCutoff } from '@/lib/orders/cutoff';
 import { createSupabaseAdmin } from '@/lib/supabase/server';
+import { getActiveFormLink, buildWebFormResponse } from '@/lib/whatsapp/web-form-handler';
 
 // ---------------------------------------------------------------------------
 // Rate limiter — module-level Map persists across warm invocations
@@ -318,6 +319,33 @@ export async function POST(request: NextRequest) {
     const orgCheck = await validateOrgActive(client.organization_id);
     if (!orgCheck.ok) {
       await reply(msg.phone, responses.orgInactive());
+      return xmlOk();
+    }
+
+    // 7.5. Bifurcación web-form: orgs con prefers_web_form=true reciben link en lugar del flujo Excel
+    const { data: orgMeta } = await supabase
+      .from('organizations')
+      .select('name, prefers_web_form')
+      .eq('id', client.organization_id)
+      .single();
+
+    if (orgMeta?.prefers_web_form) {
+      const formLink = await getActiveFormLink(client.organization_id);
+      const responseText = buildWebFormResponse((orgMeta.name as string) ?? '', formLink);
+      await reply(msg.phone, responseText, undefined, 'web_form');
+      // Log to unified communications inbox (fire-and-forget, non-blocking)
+      void supabase.from('communications').insert({
+        organization_id: client.organization_id,
+        channel: 'whatsapp',
+        direction: 'outbound',
+        category: 'otro',
+        body: responseText,
+        recipient_identifier: msg.phone,
+        status: 'sent',
+        attachments: [],
+        ai_generated: false,
+        sent_at: new Date().toISOString(),
+      });
       return xmlOk();
     }
 
