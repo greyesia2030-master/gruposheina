@@ -10,6 +10,8 @@ import {
   BookOpen,
   Package,
   Building2,
+  MessageSquare,
+  FileText,
   Menu,
   X,
 } from "lucide-react";
@@ -21,6 +23,8 @@ const NAV_ITEMS = [
   { href: "/recetas", label: "Recetas", icon: BookOpen },
   { href: "/inventario", label: "Inventario", icon: Package },
   { href: "/clientes", label: "Clientes", icon: Building2 },
+  { href: "/mensajes", label: "Mensajes", icon: MessageSquare },
+  { href: "/plantillas", label: "Plantillas", icon: FileText },
 ];
 
 export function Sidebar() {
