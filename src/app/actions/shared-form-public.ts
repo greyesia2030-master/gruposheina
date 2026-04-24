@@ -33,18 +33,20 @@ export async function getSharedFormData(token: string): Promise<
     .eq("is_active", true)
     .maybeSingle();
 
+  const tokenPrefix = token ? token.slice(0, 8) : "(undefined)";
+
   if (error || !tokenRow) {
-    console.log(`[${ts()}] getSharedFormData: token not found — ${token.slice(0, 8)}...`);
+    console.log(`[${ts()}] getSharedFormData: token not found — ${tokenPrefix}...`);
     return { ok: false, error: "invalid" };
   }
 
   if (new Date(tokenRow.valid_until) < new Date()) {
-    console.log(`[${ts()}] getSharedFormData: token expired — ${token.slice(0, 8)}...`);
+    console.log(`[${ts()}] getSharedFormData: token expired — ${tokenPrefix}...`);
     return { ok: false, error: "expired" };
   }
 
   if (tokenRow.max_uses > 0 && tokenRow.used_count >= tokenRow.max_uses) {
-    console.log(`[${ts()}] getSharedFormData: token maxed out — ${token.slice(0, 8)}...`);
+    console.log(`[${ts()}] getSharedFormData: token maxed out — ${tokenPrefix}...`);
     return { ok: false, error: "maxed_out" };
   }
 

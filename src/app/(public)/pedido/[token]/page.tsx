@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import { getSharedFormData, joinSection } from "@/app/actions/shared-form-public";
 import { Button } from "@/components/ui/button";
@@ -14,8 +14,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   invalid: "Link inválido o no encontrado.",
 };
 
-export default function SharedOrderPage({ params }: { params: { token: string } }) {
-  const { token } = params;
+export default function SharedOrderPage({ params }: { params: Promise<{ token: string }> }) {
+  const { token } = use(params);
   const router = useRouter();
   const { toast } = useToast();
 
