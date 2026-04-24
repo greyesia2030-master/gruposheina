@@ -43,7 +43,7 @@ export async function getSharedFormData(token: string): Promise<
     return { ok: false, error: "expired" };
   }
 
-  if (tokenRow.used_count >= tokenRow.max_uses) {
+  if (tokenRow.max_uses > 0 && tokenRow.used_count >= tokenRow.max_uses) {
     console.log(`[${ts()}] getSharedFormData: token maxed out — ${token.slice(0, 8)}...`);
     return { ok: false, error: "maxed_out" };
   }
@@ -104,7 +104,7 @@ export async function resolveFormToken(
 
   if (error || !tokenRow) return { ok: false, error: "Token inválido o expirado" };
   if (new Date(tokenRow.valid_until) < new Date()) return { ok: false, error: "Token expirado" };
-  if (tokenRow.used_count >= tokenRow.max_uses) return { ok: false, error: "Token agotado" };
+  if (tokenRow.max_uses > 0 && tokenRow.used_count >= tokenRow.max_uses) return { ok: false, error: "Token agotado" };
   if (!tokenRow.order_id) return { ok: false, error: "Token sin pedido asociado" };
 
   const { data: sections } = await db

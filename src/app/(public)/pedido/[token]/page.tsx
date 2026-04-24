@@ -27,15 +27,21 @@ export default function SharedOrderPage({ params }: { params: { token: string } 
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    getSharedFormData(token).then((result) => {
-      if (!result.ok) {
-        setTokenError(ERROR_MESSAGES[result.error] ?? "Error inesperado.");
+    getSharedFormData(token)
+      .then((result) => {
+        if (!result.ok) {
+          setTokenError(ERROR_MESSAGES[result.error] ?? "Error inesperado.");
+          setStatus("error");
+        } else {
+          setSections(result.data.sectionNames);
+          setStatus("ready");
+        }
+      })
+      .catch((err) => {
+        console.error("[SharedForm] Error:", err);
+        setTokenError("Error al conectar con el servidor. Intentá de nuevo.");
         setStatus("error");
-      } else {
-        setSections(result.data.sectionNames);
-        setStatus("ready");
-      }
-    });
+      });
   }, [token]);
 
   const handleSubmit = async () => {
