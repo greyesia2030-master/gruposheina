@@ -2,6 +2,7 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin-client";
+import { sendCommunication } from "@/app/actions/communications";
 import type { MenuItem, OrderParticipant, OrderSection, OrderFormToken } from "@/lib/types/database";
 import type { OrderParticipantWithLines } from "@/lib/types/order-participant";
 
@@ -464,7 +465,7 @@ export async function closeOrderSectionFromPublicForm(
   // Check order status — trigger sets 'awaiting_confirmation' when all sections closed
   const { data: order } = await db
     .from("orders")
-    .select("status")
+    .select("status, organization_id, week_label")
     .eq("id", participant.order_id)
     .maybeSingle();
 
@@ -474,6 +475,72 @@ export async function closeOrderSectionFromPublicForm(
     `[${ts()}] closeOrderSectionFromPublicForm: ok — section ${sectionId.slice(0, 8)}, ` +
     `allClosed=${allSectionsClosed}`
   );
+
+  // [B.7] Enviar email al referente cuando todas las secciones están cerradas
+  if (allSectionsClosed && order) {
+    try {
+      const { data: org } = await db
+        .from("organizations")
+        .select("id, name, primary_contact_email")
+        .eq("id", order.organization_id)
+        .maybeSingle();
+
+      if (org?.primary_contact_email) {
+        const { data: tmpl } = await db
+          .from("communication_templates")
+          .select("id")
+          .eq("name", "pedido_cerrado_cliente_referente")
+          .eq("is_active", true)
+          .maybeSingle();
+
+        if (tmpl) {
+          const [linesRes, partsRes, secsRes] = await Promise.all([
+            db
+              .from("order_lines")
+              .select("id", { count: "exact", head: true })
+              .eq("order_id", participant.order_id),
+            db
+              .from("order_participants")
+              .select("id", { count: "exact", head: true })
+              .eq("order_id", participant.order_id),
+            db
+              .from("order_sections")
+              .select("id", { count: "exact", head: true })
+              .eq("order_id", participant.order_id),
+          ]);
+
+          const commResult = await sendCommunication(
+            (org.id as string),
+            "email",
+            "pedido_confirmacion",
+            org.primary_contact_email as string,
+            "",
+            {
+              orderId: participant.order_id,
+              templateId: (tmpl.id as string),
+              templateVariables: {
+                week_label: order.week_label,
+                organization_name: org.name as string,
+                order_code: participant.order_id.slice(0, 8).toUpperCase(),
+                total_lines: (linesRes.count ?? 0).toString(),
+                total_participants: (partsRes.count ?? 0).toString(),
+                closed_sections: (secsRes.count ?? 0).toString(),
+                total_sections: (secsRes.count ?? 0).toString(),
+              },
+            }
+          );
+
+          if (commResult.ok) {
+            console.log(`[${ts()}] [B.7] Email referente enviado: ${org.primary_contact_email}`);
+          } else {
+            console.error(`[${ts()}] [B.7] sendCommunication falló:`, commResult.error);
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`[${ts()}] [B.7] Error enviando email referente (no bloquea):`, err);
+    }
+  }
 
   return { ok: true, data: { allSectionsClosed } };
 }
