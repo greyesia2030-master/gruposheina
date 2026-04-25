@@ -20,7 +20,8 @@ export function OrderContextHeader({ token }: { token: string }) {
   const [countdown, setCountdown] = useState("");
 
   useEffect(() => {
-    getOrderContext(token).then((res) => {
+    const at = localStorage.getItem(`access_token_${token}`) ?? undefined;
+    getOrderContext(token, at).then((res) => {
       if (res.ok) {
         setCtx(res.data);
         setCountdown(formatCountdown(res.data.validUntil));
@@ -58,21 +59,37 @@ export function OrderContextHeader({ token }: { token: string }) {
         )}
       </div>
 
+      {ctx?.currentParticipant && (
+        <div className="px-4 pb-2 flex items-center gap-1.5">
+          <span className="text-xs text-gray-500">
+            👤 <span className="font-medium text-gray-700">{ctx.currentParticipant.display_name}</span>
+          </span>
+          {ctx.currentParticipant.section_name && (
+            <span className="text-xs text-gray-400">· {ctx.currentParticipant.section_name}</span>
+          )}
+        </div>
+      )}
+
       {ctx && ctx.totalSections > 0 && (
-        <div className="px-4 pb-2">
-          <div className="flex items-center justify-between mb-1">
+        <div className="px-4 pb-2 space-y-1.5">
+          <div className="flex items-center justify-between">
             <span className="text-xs text-gray-500">
               Sectores cerrados: {ctx.closedSections}/{ctx.totalSections}
             </span>
-            {ctx.memberId && (
-              <span className="text-xs text-gray-400">{ctx.memberId}</span>
+            {ctx.expectedTotalParticipants > 0 && (
+              <span className="text-xs text-gray-500">
+                Personas que cargaron:{" "}
+                <span className="font-semibold text-gray-700">
+                  {ctx.actualParticipants} de {ctx.expectedTotalParticipants} esperadas
+                </span>
+              </span>
             )}
           </div>
           <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
             <div
               className="h-full rounded-full bg-[#D4622B] transition-all duration-500"
               style={{
-                width: `${(ctx.closedSections / ctx.totalSections) * 100}%`,
+                width: `${ctx.totalSections > 0 ? (ctx.closedSections / ctx.totalSections) * 100 : 0}%`,
               }}
             />
           </div>

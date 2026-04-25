@@ -10,14 +10,17 @@ export interface OrderContext {
   weekLabel: string;
   totalSections: number;
   closedSections: number;
-  totalParticipants: number;
+  actualParticipants: number;
+  expectedTotalParticipants: number;
   validUntil: string;
+  currentParticipant?: { display_name: string; section_name: string };
 }
 
 type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
 export async function getOrderContext(
-  token: string
+  token: string,
+  accessToken?: string
 ): Promise<ActionResult<OrderContext>> {
   const db = createAdminClient();
 
@@ -36,32 +39,66 @@ export async function getOrderContext(
     valid_until: string;
   };
 
-  const [orgRes, orderRes, sectionsRes, participantsRes] = await Promise.all([
-    db
-      .from("organizations")
-      .select("name, member_id")
-      .eq("id", organization_id)
-      .maybeSingle(),
-    db
-      .from("orders")
-      .select("week_label")
-      .eq("id", order_id)
-      .maybeSingle(),
-    db
-      .from("order_sections")
-      .select("id, closed_at")
-      .eq("order_id", order_id),
-    db
-      .from("order_participants")
-      .select("id", { count: "exact", head: true })
-      .eq("order_id", order_id),
-  ]);
+  const [orgRes, orderRes, sectionsRes, participantsRes, deptRes, participantRes] =
+    await Promise.all([
+      db
+        .from("organizations")
+        .select("name, member_id")
+        .eq("id", organization_id)
+        .maybeSingle(),
+      db
+        .from("orders")
+        .select("week_label")
+        .eq("id", order_id)
+        .maybeSingle(),
+      db
+        .from("order_sections")
+        .select("id, name, closed_at")
+        .eq("order_id", order_id),
+      db
+        .from("order_participants")
+        .select("id", { count: "exact", head: true })
+        .eq("order_id", order_id),
+      db
+        .from("client_departments")
+        .select("name, expected_participants")
+        .eq("organization_id", organization_id),
+      accessToken
+        ? db
+            .from("order_participants")
+            .select("display_name, order_sections(name)")
+            .eq("access_token", accessToken)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
 
   const org = orgRes.data as { name: string; member_id: string | null } | null;
   const order = orderRes.data as { week_label: string } | null;
-  const sections = (sectionsRes.data ?? []) as { id: string; closed_at: string | null }[];
+  const sections = (sectionsRes.data ?? []) as { id: string; name: string; closed_at: string | null }[];
+  const depts = (deptRes.data ?? []) as { name: string; expected_participants: number }[];
 
   if (!org || !order) return { ok: false, error: "data_missing" };
+
+  // Sum expected_participants from client_departments for the sections in this order
+  const sectionNames = new Set(sections.map((s) => s.name.toLowerCase()));
+  const expectedTotalParticipants = depts
+    .filter((d) => sectionNames.has(d.name.toLowerCase()))
+    .reduce((sum, d) => sum + (d.expected_participants ?? 0), 0);
+
+  let currentParticipant: { display_name: string; section_name: string } | undefined;
+  if (participantRes.data) {
+    const row = participantRes.data as unknown as {
+      display_name: string;
+      order_sections: { name: string } | { name: string }[] | null;
+    };
+    const sectionObj = Array.isArray(row.order_sections)
+      ? row.order_sections[0]
+      : row.order_sections;
+    currentParticipant = {
+      display_name: row.display_name,
+      section_name: sectionObj?.name ?? "",
+    };
+  }
 
   return {
     ok: true,
@@ -72,8 +109,10 @@ export async function getOrderContext(
       weekLabel: order.week_label,
       totalSections: sections.length,
       closedSections: sections.filter((s) => s.closed_at !== null).length,
-      totalParticipants: participantsRes.count ?? 0,
+      actualParticipants: participantsRes.count ?? 0,
+      expectedTotalParticipants,
       validUntil: valid_until,
+      currentParticipant,
     },
   };
 }

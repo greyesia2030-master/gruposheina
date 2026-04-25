@@ -162,16 +162,55 @@ export async function joinSection(
   if (contact) {
     if (contact.includes("@")) {
       contactType = "email";
-      const { data: org } = await db
-        .from("organizations")
-        .select("primary_contact_email, secondary_emails")
-        .eq("id", formToken.organization_id)
-        .maybeSingle();
-      const allEmails = [
-        (org as unknown as { primary_contact_email: string | null } | null)?.primary_contact_email,
-        ...((org as unknown as { secondary_emails: string[] } | null)?.secondary_emails ?? []),
-      ].filter(Boolean) as string[];
-      isAuthorized = allEmails.map((e) => e.toLowerCase()).includes(contact.toLowerCase());
+      // B.10.5: Check dept-specific authorized_emails first, fallback to org secondary_emails
+      const normalizedContact = contact.toLowerCase();
+
+      const [deptRes, orgRes] = await Promise.all([
+        db
+          .from("client_departments")
+          .select("authorized_emails")
+          .eq("organization_id", formToken.organization_id)
+          .ilike("name", (section as { name?: string }).name ?? "")
+          .maybeSingle(),
+        db
+          .from("organizations")
+          .select("primary_contact_email, secondary_emails")
+          .eq("id", formToken.organization_id)
+          .maybeSingle(),
+      ]);
+
+      const deptEmails = ((deptRes.data as unknown as { authorized_emails?: string[] } | null)
+        ?.authorized_emails ?? []).map((e) => e.toLowerCase());
+
+      if (deptEmails.length > 0) {
+        isAuthorized = deptEmails.includes(normalizedContact);
+        if (!isAuthorized) {
+          // Fallback to org-level
+          const orgEmails = [
+            (orgRes.data as unknown as { primary_contact_email?: string | null } | null)
+              ?.primary_contact_email,
+            ...((orgRes.data as unknown as { secondary_emails?: string[] } | null)
+              ?.secondary_emails ?? []),
+          ]
+            .filter(Boolean)
+            .map((e) => (e as string).toLowerCase());
+          if (orgEmails.includes(normalizedContact)) {
+            console.warn(`[joinSection] email matched org-level but not dept "${(section as { name?: string }).name}" — marking authorized`);
+            isAuthorized = true;
+          }
+        }
+      } else {
+        // No dept config — fall back to org secondary_emails only
+        const orgEmails = [
+          (orgRes.data as unknown as { primary_contact_email?: string | null } | null)
+            ?.primary_contact_email,
+          ...((orgRes.data as unknown as { secondary_emails?: string[] } | null)
+            ?.secondary_emails ?? []),
+        ]
+          .filter(Boolean)
+          .map((e) => (e as string).toLowerCase());
+        isAuthorized = orgEmails.includes(normalizedContact);
+      }
     } else if (/^[\d\s+\-()]+$/.test(contact)) {
       contactType = "phone";
       const cleanContact = contact.replace(/\D/g, "");

@@ -94,6 +94,14 @@ export default async function ClienteDetailPage({
             </Badge>
             {canManage && (
               <Link
+                href={`/clientes/${id}/departamentos`}
+                className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-secondary hover:bg-surface-hover transition-colors"
+              >
+                Departamentos
+              </Link>
+            )}
+            {canManage && (
+              <Link
                 href={`/clientes/${id}/configuracion`}
                 className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-secondary hover:bg-surface-hover transition-colors"
               >

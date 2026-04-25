@@ -343,6 +343,16 @@ export interface OrderSection {
   created_at: string;
 }
 
+export interface ClientDepartment {
+  id: string;
+  organization_id: string;
+  name: string;
+  expected_participants: number;
+  authorized_emails: string[];
+  created_at: string;
+  updated_at: string;
+}
+
 export interface OrderParticipant {
   id: string;
   order_id: string;

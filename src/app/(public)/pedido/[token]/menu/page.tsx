@@ -23,6 +23,113 @@ function cartKey(menuItemId: string, dayOfWeek: number) {
   return `${menuItemId}-${dayOfWeek}`;
 }
 
+function ItemDetailModal({
+  item,
+  qty,
+  onClose,
+  onQtyChange,
+}: {
+  item: MenuItem;
+  qty: number;
+  onClose: () => void;
+  onQtyChange: (v: number) => void;
+}) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  const allergens = Array.isArray(item.allergens)
+    ? (item.allergens as string[]).filter(Boolean)
+    : [];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md bg-white rounded-t-2xl sm:rounded-2xl overflow-hidden shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {item.photo_url && (
+          <div className="relative w-full h-48 bg-gray-100">
+            <img
+              src={item.photo_url}
+              alt={item.display_name}
+              className="w-full h-full object-cover"
+            />
+          </div>
+        )}
+
+        <div className="p-5">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 leading-tight">
+                {item.display_name}
+              </h2>
+              <p className="text-xs text-gray-400 capitalize mt-0.5">{item.category}</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="shrink-0 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              aria-label="Cerrar"
+            >
+              ✕
+            </button>
+          </div>
+
+          {item.description && (
+            <p className="text-sm text-gray-600 mb-4 leading-relaxed">{item.description}</p>
+          )}
+
+          <div className="flex flex-wrap gap-3 mb-4 text-xs text-gray-500">
+            {item.calories_kcal != null && (
+              <span className="flex items-center gap-1">
+                🔥 <span>{item.calories_kcal} kcal</span>
+              </span>
+            )}
+            {item.weight_grams != null && (
+              <span className="flex items-center gap-1">
+                ⚖️ <span>{item.weight_grams} g</span>
+              </span>
+            )}
+            {item.unit_price != null && (
+              <span className="flex items-center gap-1">
+                💲 <span>${item.unit_price.toFixed(2)}</span>
+              </span>
+            )}
+          </div>
+
+          {allergens.length > 0 && (
+            <div className="mb-4">
+              <p className="text-xs font-medium text-gray-500 mb-1.5">Alérgenos</p>
+              <div className="flex flex-wrap gap-1">
+                {allergens.map((a) => (
+                  <span
+                    key={a}
+                    className="px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs"
+                  >
+                    {a}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-3 border-t">
+            <span className="text-sm font-medium text-gray-700">Cantidad</span>
+            <NumberInput value={qty} onChange={onQtyChange} min={0} max={20} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function MenuPage() {
   const params = useParams();
   const token = params.token as string;
@@ -36,6 +143,7 @@ export default function MenuPage() {
   const [cart, setCart] = useState<CartState>({});
   const [loading, setLoading] = useState(true);
   const [showCart, setShowCart] = useState(false);
+  const [detailItem, setDetailItem] = useState<MenuItem | null>(null);
 
   useEffect(() => {
     const at = localStorage.getItem(`access_token_${token}`);
@@ -122,13 +230,35 @@ export default function MenuPage() {
                     <img
                       src={item.photo_url}
                       alt={item.display_name}
-                      className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
+                      className="w-16 h-16 rounded-lg object-cover flex-shrink-0 cursor-pointer"
+                      onClick={() => setDetailItem(item)}
                     />
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-900 text-sm leading-tight">
-                      {item.display_name}
-                    </p>
+                    <div className="flex items-start gap-1">
+                      <p className="font-medium text-gray-900 text-sm leading-tight">
+                        {item.display_name}
+                      </p>
+                      <button
+                        onClick={() => setDetailItem(item)}
+                        className="shrink-0 mt-0.5 text-gray-300 hover:text-[#D4622B] transition-colors"
+                        aria-label="Ver detalle"
+                        title="Ver detalle"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                          className="w-4 h-4"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a.75.75 0 0 0 0 1.5h.253a.25.25 0 0 1 .244.304l-.459 2.066A1.75 1.75 0 0 0 10.747 15H11a.75.75 0 0 0 0-1.5h-.253a.25.25 0 0 1-.244-.304l.459-2.066A1.75 1.75 0 0 0 9.253 9H9Z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      </button>
+                    </div>
                     <p className="text-xs text-gray-400 mt-0.5 capitalize">{item.category}</p>
                     {item.calories_kcal && (
                       <p className="text-xs text-gray-400">{item.calories_kcal} kcal</p>
@@ -173,6 +303,18 @@ export default function MenuPage() {
           onSubmit={() => {
             setShowCart(false);
             router.push(`/pedido/${token}/resumen`);
+          }}
+        />
+      )}
+
+      {/* Item detail modal */}
+      {detailItem && (
+        <ItemDetailModal
+          item={detailItem}
+          qty={cart[cartKey(detailItem.id, detailItem.day_of_week)] ?? 0}
+          onClose={() => setDetailItem(null)}
+          onQtyChange={(v) => {
+            handleQuantityChange(detailItem, v);
           }}
         />
       )}
