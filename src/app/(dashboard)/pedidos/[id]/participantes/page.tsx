@@ -12,6 +12,7 @@ type RawLine = {
 
 type RawParticipant = {
   id: string;
+  section_id: string;
   display_name: string;
   submitted_at: string | null;
   total_quantity: number;
@@ -28,7 +29,7 @@ type SectionList = Array<{
   total_quantity: number;
   display_order: number;
   order_participants: Array<
-    RawParticipant & {
+    Omit<RawParticipant, "section_id"> & {
       order_lines: Array<Omit<RawLine, "participant_id">>;
     }
   >;
@@ -42,27 +43,38 @@ export default async function ParticipantesPage({
   const { id } = await params;
   const db = createAdminClient();
 
-  // Query 1: sections + participants (sin order_lines anidado — evita FK participant_id)
-  const { data: sections } = await db
+  // Query 1: sections planas (sin joins)
+  const { data: sections, error: sectionsError } = await db
     .from("order_sections")
-    .select(`
-      id, name, closed_at, total_quantity, display_order,
-      order_participants(
-        id, display_name, submitted_at, total_quantity, last_activity_at,
-        member_contact, contact_type, is_authorized
-      )
-    `)
+    .select("id, name, closed_at, total_quantity, display_order")
     .eq("order_id", id)
     .order("display_order");
 
-  // Query 2: todas las lines del pedido con participant_id
+  if (sectionsError) {
+    console.error("[Participantes] sectionsError:", sectionsError);
+  }
+
+  // Query 2: participants planas (todos los de cualquier sección del order)
+  const sectionIds = (sections ?? []).map((s) => s.id);
+  const { data: participants, error: pError } = sectionIds.length > 0
+    ? await db
+        .from("order_participants")
+        .select("id, section_id, display_name, submitted_at, total_quantity, last_activity_at, member_contact, contact_type, is_authorized")
+        .in("section_id", sectionIds)
+    : { data: [], error: null };
+
+  if (pError) {
+    console.error("[Participantes] participantsError:", pError);
+  }
+
+  // Query 3: lines por order_id (con participant_id para merge)
   const { data: lines } = await db
     .from("order_lines")
     .select("id, quantity, day_of_week, display_name, menu_item_id, participant_id")
     .eq("order_id", id)
     .not("participant_id", "is", null);
 
-  // Mapa participantId → lines[]
+  // Merge: lines por participant_id
   const linesByParticipant = ((lines ?? []) as unknown as RawLine[]).reduce<
     Record<string, Omit<RawLine, "participant_id">[]>
   >((acc, l) => {
@@ -71,21 +83,23 @@ export default async function ParticipantesPage({
     return acc;
   }, {});
 
-  // Enriquecer cada participante con sus lines
-  const sectionList = ((sections ?? []) as unknown as Array<{
-    id: string;
-    name: string;
-    closed_at: string | null;
-    total_quantity: number;
-    display_order: number;
-    order_participants: RawParticipant[];
-  }>).map((sec) => ({
-    ...sec,
-    order_participants: sec.order_participants.map((p) => ({
-      ...p,
+  // Merge: participants por section_id, agregando sus lines
+  const participantsBySection = ((participants ?? []) as RawParticipant[]).reduce<
+    Record<string, Array<Omit<RawParticipant, "section_id"> & { order_lines: Omit<RawLine, "participant_id">[] }>>
+  >((acc, p) => {
+    const { section_id, ...participantData } = p;
+    (acc[section_id] ??= []).push({
+      ...participantData,
       order_lines: linesByParticipant[p.id] ?? [],
-    })),
+    });
+    return acc;
+  }, {});
+
+  // Construir sectionList
+  const sectionList: SectionList = (sections ?? []).map((sec) => ({
+    ...sec,
+    order_participants: participantsBySection[sec.id] ?? [],
   }));
 
-  return <ParticipantesClient orderId={id} sectionList={sectionList as unknown as SectionList} />;
+  return <ParticipantesClient orderId={id} sectionList={sectionList} />;
 }
