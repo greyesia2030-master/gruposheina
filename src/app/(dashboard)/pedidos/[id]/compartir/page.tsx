@@ -1,14 +1,15 @@
-import { createSupabaseServer } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin-client";
 import { CompartirClient } from "./compartir-client";
 
 export default async function CompartirPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
-  const supabase = await createSupabaseServer();
+  const { id } = await params;
+  const db = createAdminClient();
 
-  const { data: order } = await supabase
+  const { data: order } = await db
     .from("orders")
     .select(`
       id, status, organization_id, menu_id,
@@ -16,8 +17,8 @@ export default async function CompartirPage({
       order_form_tokens(id, token, valid_until, max_uses, used_count, is_active),
       order_sections(id, name, closed_at, total_quantity, display_order, order_participants(id))
     `)
-    .eq("id", params.id)
-    .single();
+    .eq("id", id)
+    .maybeSingle();
 
   return <CompartirClient order={order as never} />;
 }
