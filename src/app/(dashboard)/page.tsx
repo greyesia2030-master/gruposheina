@@ -4,6 +4,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { OrderStatusBadge } from "@/components/ui/badge";
+import { ClickableRow } from "@/app/(dashboard)/pedidos/clickable-row";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import {
   ClipboardList,
@@ -183,18 +184,16 @@ export default async function DashboardPage() {
                 </thead>
                 <tbody>
                   {recentOrders.map((order) => (
-                    <tr key={order.id} className="border-b border-border last:border-0 hover:bg-surface-hover">
-                      <td className="px-4 py-3">
-                        <Link href={`/pedidos/${order.id}`} className="hover:text-primary">
-                          {(order.organization as unknown as { name: string }[] | null)?.[0]?.name ?? "—"}
-                        </Link>
+                    <ClickableRow key={order.id} href={`/pedidos/${order.id}`} className="border-b border-border last:border-0 hover:bg-surface-hover">
+                      <td className="px-4 py-3 font-medium">
+                        {(order.organization as unknown as { name: string } | null)?.name ?? "—"}
                       </td>
                       <td className="px-4 py-3">{order.week_label}</td>
                       <td className="px-4 py-3">
                         <OrderStatusBadge status={order.status as import("@/lib/types/database").OrderStatus} />
                       </td>
                       <td className="px-4 py-3 text-right font-medium">{order.total_units}</td>
-                    </tr>
+                    </ClickableRow>
                   ))}
                 </tbody>
               </table>
