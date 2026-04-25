@@ -328,6 +328,7 @@ export interface OrderFormToken {
   used_count: number;
   created_by: string;
   is_active: boolean;
+  require_contact: boolean;
   created_at: string;
 }
 
@@ -354,6 +355,9 @@ export interface OrderParticipant {
   submitted_at: string | null;
   total_quantity: number;
   notes: string | null;
+  member_contact: string | null;
+  contact_type: "email" | "phone" | "none";
+  is_authorized: boolean | null;
 }
 
 export interface CommunicationTemplate {

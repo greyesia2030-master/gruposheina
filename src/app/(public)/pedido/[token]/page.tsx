@@ -22,8 +22,10 @@ export default function SharedOrderPage({ params }: { params: Promise<{ token: s
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [tokenError, setTokenError] = useState("");
   const [sections, setSections] = useState<{ id: string; name: string }[]>([]);
+  const [requireContact, setRequireContact] = useState(true);
   const [selectedSectionId, setSelectedSectionId] = useState("");
   const [participantName, setParticipantName] = useState("");
+  const [memberContact, setMemberContact] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -34,6 +36,7 @@ export default function SharedOrderPage({ params }: { params: Promise<{ token: s
           setStatus("error");
         } else {
           setSections(result.data.sectionNames);
+          setRequireContact(result.data.requireContact);
           setStatus("ready");
         }
       })
@@ -46,8 +49,14 @@ export default function SharedOrderPage({ params }: { params: Promise<{ token: s
 
   const handleSubmit = async () => {
     if (!selectedSectionId || participantName.trim().length < 2) return;
+    if (requireContact && !memberContact.trim()) return;
     setSubmitting(true);
-    const result = await joinSection(token, selectedSectionId, participantName.trim());
+    const result = await joinSection(
+      token,
+      selectedSectionId,
+      participantName.trim(),
+      memberContact.trim() || undefined
+    );
     if (!result.ok) {
       toast(result.error || "Error al registrar participante", "error");
       setSubmitting(false);
@@ -69,7 +78,12 @@ export default function SharedOrderPage({ params }: { params: Promise<{ token: s
     );
   }
 
-  const canSubmit = !!selectedSectionId && participantName.trim().length >= 2 && !submitting;
+  const contactFilled = !requireContact || memberContact.trim().length > 0;
+  const canSubmit =
+    !!selectedSectionId &&
+    participantName.trim().length >= 2 &&
+    contactFilled &&
+    !submitting;
 
   return (
     <div className="max-w-md mx-auto py-10 px-4">
@@ -106,7 +120,7 @@ export default function SharedOrderPage({ params }: { params: Promise<{ token: s
       </div>
 
       {/* NameInputCard */}
-      <div className="mb-8">
+      <div className="mb-4">
         <Input
           label="Tu nombre"
           placeholder="Ej: Juan Pérez"
@@ -114,6 +128,20 @@ export default function SharedOrderPage({ params }: { params: Promise<{ token: s
           onChange={(e) => setParticipantName(e.target.value)}
           maxLength={100}
         />
+      </div>
+
+      {/* Contact field */}
+      <div className="mb-8">
+        <Input
+          label={requireContact ? "Email o teléfono *" : "Email o teléfono (opcional)"}
+          placeholder="ej: juan@empresa.com o 1123456789"
+          value={memberContact}
+          onChange={(e) => setMemberContact(e.target.value)}
+          maxLength={200}
+        />
+        <p className="text-xs text-gray-400 mt-1">
+          Para que podamos contactarte si hace falta
+        </p>
       </div>
 
       <Button

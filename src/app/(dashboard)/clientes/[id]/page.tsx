@@ -92,6 +92,14 @@ export default async function ClienteDetailPage({
             <Badge variant={STATUS_VARIANT[org.status] ?? "default"}>
               {STATUS_LABELS[org.status] ?? org.status}
             </Badge>
+            {canManage && (
+              <Link
+                href={`/clientes/${id}/configuracion`}
+                className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-secondary hover:bg-surface-hover transition-colors"
+              >
+                Configuración
+              </Link>
+            )}
             {canManage && org.status !== "inactive" && (
               <DeactivateButton orgId={id} />
             )}

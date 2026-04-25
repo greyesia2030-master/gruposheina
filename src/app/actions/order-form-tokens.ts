@@ -13,6 +13,7 @@ export async function createOrderFormToken(opts: {
   validUntil: Date;
   maxUses?: number;
   sectionNames?: string[];
+  requireContact?: boolean;
 }): Promise<ActionResult<OrderFormToken>> {
   const serverClient = await createSupabaseServer();
   const { data: { user } } = await serverClient.auth.getUser();
@@ -30,10 +31,11 @@ export async function createOrderFormToken(opts: {
       token,
       valid_from: new Date().toISOString(),
       valid_until: opts.validUntil.toISOString(),
-      max_uses: opts.maxUses ?? 100,
+      max_uses: opts.maxUses ?? 50,
       used_count: 0,
       created_by: user.id,
       is_active: true,
+      require_contact: opts.requireContact ?? true,
     })
     .select()
     .single();

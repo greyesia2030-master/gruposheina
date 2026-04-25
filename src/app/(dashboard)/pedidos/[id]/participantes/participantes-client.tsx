@@ -2,6 +2,9 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
+import { Pencil, Trash2 } from "lucide-react";
+import { deleteParticipant } from "@/app/actions/admin-overrides";
+import { EditParticipantModal } from "@/components/admin/edit-participant-modal";
 
 const DAY_NAMES: Record<number, string> = {
   1: "Lunes",
@@ -32,11 +35,15 @@ type Participant = {
   submitted_at: string | null;
   total_quantity: number;
   last_activity_at: string;
+  member_contact: string | null;
+  contact_type: "email" | "phone" | "none";
+  is_authorized: boolean | null;
   order_lines: Array<{
     id: string;
     quantity: number;
     day_of_week: number;
     display_name: string;
+    menu_item_id: string;
   }>;
 };
 
@@ -60,6 +67,40 @@ export function ParticipantesClient({
 }) {
   const [sectionFilter, setSectionFilter] = useState("__all__");
   const [sortKey, setSortKey] = useState<SortKey>("recent");
+  const [editingParticipant, setEditingParticipant] = useState<Participant | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDelete = async (participant: Participant) => {
+    if (!confirm(`¿Eliminar a ${participant.display_name}? Esta acción no se puede deshacer.`)) return;
+    setDeletingId(participant.id);
+    await deleteParticipant(orderId, participant.id);
+    setDeletingId(null);
+    window.location.reload();
+  };
+
+  const AuthBadge = ({ p }: { p: Participant }) => {
+    if (p.contact_type === "none" || !p.member_contact) return null;
+    if (p.is_authorized === true)
+      return (
+        <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full" title={p.member_contact}>
+          🟢 Verificado
+        </span>
+      );
+    if (p.is_authorized === false)
+      return (
+        <span
+          className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full cursor-help"
+          title={`${p.member_contact} — No está en la lista del cliente`}
+        >
+          🔴 No autorizado
+        </span>
+      );
+    return (
+      <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded-full" title={p.member_contact}>
+        🟡 Sin verificar
+      </span>
+    );
+  };
 
   const sectionNames = useMemo(
     () => [...new Set(sectionList.map((s) => s.name))],
@@ -217,11 +258,29 @@ export function ParticipantesClient({
                                   Pendiente
                                 </span>
                               )}
+                              <button
+                                onClick={() => setEditingParticipant(participant)}
+                                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
+                                title="Editar aporte"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(participant)}
+                                disabled={deletingId === participant.id}
+                                className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors disabled:opacity-50"
+                                title="Eliminar participante"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
                             </div>
                           </div>
-                          <p className="text-xs text-gray-400 mb-2">
-                            {timeAgo(participant.last_activity_at)}
-                          </p>
+                          <div className="flex items-center gap-2 mb-2">
+                            <p className="text-xs text-gray-400">
+                              {timeAgo(participant.last_activity_at)}
+                            </p>
+                            <AuthBadge p={participant} />
+                          </div>
 
                           {participant.order_lines.length === 0 ? (
                             <p className="text-sm text-gray-400">Sin viandas cargadas</p>
@@ -258,6 +317,16 @@ export function ParticipantesClient({
             ))}
           </div>
         </>
+      )}
+
+      {editingParticipant && (
+        <EditParticipantModal
+          open={!!editingParticipant}
+          onClose={() => setEditingParticipant(null)}
+          onSaved={() => window.location.reload()}
+          orderId={orderId}
+          participant={editingParticipant}
+        />
       )}
     </div>
   );

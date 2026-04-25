@@ -23,6 +23,7 @@ export async function getSharedFormData(token: string): Promise<
     organizationId: string;
     sectionNames: { id: string; name: string }[];
     items: MenuItem[];
+    requireContact: boolean;
   }>
 > {
   const db = createAdminClient();
@@ -86,6 +87,7 @@ export async function getSharedFormData(token: string): Promise<
       organizationId: tokenRow.organization_id,
       sectionNames: sections.map((s) => ({ id: s.id, name: s.name })),
       items: items as unknown as MenuItem[],
+      requireContact: (tokenRow as unknown as { require_contact?: boolean }).require_contact ?? true,
     },
   };
 }
@@ -131,7 +133,8 @@ export async function resolveFormToken(
 export async function joinSection(
   token: string,
   sectionId: string,
-  displayName: string
+  displayName: string,
+  memberContact?: string
 ): Promise<ActionResult<OrderParticipant>> {
   const db = createAdminClient();
 
@@ -151,6 +154,42 @@ export async function joinSection(
   if (section.order_id !== formToken.order_id) return { ok: false, error: "Sección no pertenece a este formulario" };
   if (section.closed_at) return { ok: false, error: "La sección ya está cerrada" };
 
+  // Classify and authorize contact
+  const contact = memberContact?.trim() || null;
+  let contactType: "email" | "phone" | "none" = "none";
+  let isAuthorized: boolean | null = null;
+
+  if (contact) {
+    if (contact.includes("@")) {
+      contactType = "email";
+      const { data: org } = await db
+        .from("organizations")
+        .select("primary_contact_email, secondary_emails")
+        .eq("id", formToken.organization_id)
+        .maybeSingle();
+      const allEmails = [
+        (org as unknown as { primary_contact_email: string | null } | null)?.primary_contact_email,
+        ...((org as unknown as { secondary_emails: string[] } | null)?.secondary_emails ?? []),
+      ].filter(Boolean) as string[];
+      isAuthorized = allEmails.map((e) => e.toLowerCase()).includes(contact.toLowerCase());
+    } else if (/^[\d\s+\-()]+$/.test(contact)) {
+      contactType = "phone";
+      const cleanContact = contact.replace(/\D/g, "");
+      const { data: org } = await db
+        .from("organizations")
+        .select("contact_phone, authorized_phones")
+        .eq("id", formToken.organization_id)
+        .maybeSingle();
+      const allPhones = [
+        (org as unknown as { contact_phone: string | null } | null)?.contact_phone,
+        ...((org as unknown as { authorized_phones: string[] } | null)?.authorized_phones ?? []),
+      ]
+        .filter(Boolean)
+        .map((p) => (p as string).replace(/\D/g, ""));
+      isAuthorized = allPhones.some((p) => p.endsWith(cleanContact.slice(-8)));
+    }
+  }
+
   // Create participant
   const { data: participant, error: insertError } = await db
     .from("order_participants")
@@ -161,6 +200,9 @@ export async function joinSection(
       form_token_id: formToken.id,
       first_seen_at: new Date().toISOString(),
       last_activity_at: new Date().toISOString(),
+      member_contact: contact,
+      contact_type: contactType,
+      is_authorized: isAuthorized,
     })
     .select("*")
     .single();

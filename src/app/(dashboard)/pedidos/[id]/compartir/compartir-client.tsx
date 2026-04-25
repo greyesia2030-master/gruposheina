@@ -42,6 +42,9 @@ export function CompartirClient({ order }: { order: Order | null }) {
   const [loading, setLoading] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [diasValidez, setDiasValidez] = useState(7);
+  const [maxParticipantes, setMaxParticipantes] = useState(50);
+  const [requireContact, setRequireContact] = useState(true);
 
   if (!order) {
     return <p className="text-gray-500 py-12 text-center">Pedido no encontrado.</p>;
@@ -62,9 +65,10 @@ export function CompartirClient({ order }: { order: Order | null }) {
       organizationId: order.organization_id,
       menuId: order.menu_id,
       orderId: order.id,
-      validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      maxUses: 200,
+      validUntil: new Date(Date.now() + diasValidez * 24 * 60 * 60 * 1000),
+      maxUses: maxParticipantes,
       sectionNames: sections,
+      requireContact,
     });
     if (result.ok) {
       setGeneratedToken(result.data.token);
@@ -185,6 +189,58 @@ export function CompartirClient({ order }: { order: Order | null }) {
                 +
               </button>
             </div>
+          </div>
+
+          {/* Link configuration */}
+          <div className="mb-6 rounded-xl border bg-gray-50 p-4 space-y-4">
+            <h2 className="text-sm font-semibold text-gray-700">Configuración del link</h2>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Días de validez
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={diasValidez}
+                  onChange={(e) => setDiasValidez(Math.min(30, Math.max(1, Number(e.target.value))))}
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Máx. participantes
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={maxParticipantes}
+                  onChange={(e) => setMaxParticipantes(Math.min(500, Math.max(1, Number(e.target.value))))}
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                />
+              </div>
+            </div>
+            <label className="flex items-center justify-between cursor-pointer">
+              <div>
+                <p className="text-sm font-medium text-gray-700">Requerir email/teléfono</p>
+                <p className="text-xs text-gray-500">Los participantes deben ingresar un contacto para auditoría</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRequireContact(!requireContact)}
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                  requireContact ? "bg-[#D4622B]" : "bg-gray-200"
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                    requireContact ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </label>
           </div>
 
           <Button

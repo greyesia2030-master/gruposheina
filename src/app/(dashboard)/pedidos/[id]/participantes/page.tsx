@@ -15,7 +15,8 @@ export default async function ParticipantesPage({
       id, name, closed_at, total_quantity, display_order,
       order_participants(
         id, display_name, submitted_at, total_quantity, last_activity_at,
-        order_lines(id, quantity, day_of_week, display_name)
+        member_contact, contact_type, is_authorized,
+        order_lines(id, quantity, day_of_week, display_name, menu_item_id)
       )
     `)
     .eq("order_id", id)
@@ -33,11 +34,15 @@ export default async function ParticipantesPage({
       submitted_at: string | null;
       total_quantity: number;
       last_activity_at: string;
+      member_contact: string | null;
+      contact_type: "email" | "phone" | "none";
+      is_authorized: boolean | null;
       order_lines: Array<{
         id: string;
         quantity: number;
         day_of_week: number;
         display_name: string;
+        menu_item_id: string;
       }>;
     }>;
   }>;
