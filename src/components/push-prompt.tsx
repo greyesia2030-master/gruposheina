@@ -9,6 +9,16 @@ interface PushPromptProps {
 
 type PromptState = "idle" | "asking" | "subscribed" | "denied" | "unsupported";
 
+function urlBase64ToUint8Array(b64: string): Uint8Array<ArrayBuffer> {
+  const padding = "=".repeat((4 - (b64.length % 4)) % 4);
+  const base64 = (b64 + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const buffer = new ArrayBuffer(raw.length);
+  const out = new Uint8Array(buffer);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
 export function PushPrompt({ participantId }: PushPromptProps) {
   const [state, setState] = useState<PromptState>("idle");
 
@@ -32,6 +42,13 @@ export function PushPrompt({ participantId }: PushPromptProps) {
   const handleEnable = async () => {
     setState("asking");
     try {
+      const vapidPub = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      if (!vapidPub) {
+        console.error("[push] NEXT_PUBLIC_VAPID_PUBLIC_KEY no está configurada");
+        setState("denied");
+        return;
+      }
+
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
         setState("denied");
@@ -41,19 +58,26 @@ export function PushPrompt({ participantId }: PushPromptProps) {
       const reg = await navigator.serviceWorker.ready;
       const subscription = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+        applicationServerKey: urlBase64ToUint8Array(vapidPub),
       });
 
       const json = subscription.toJSON();
       const result = await subscribeParticipantPush({
         participantId,
         endpoint: subscription.endpoint,
-        p256dh: json.keys?.p256dh ?? '',
-        auth: json.keys?.auth ?? '',
+        p256dh: json.keys?.p256dh ?? "",
+        auth: json.keys?.auth ?? "",
         userAgent: navigator.userAgent,
       });
-      setState(result.ok ? "subscribed" : "denied");
-    } catch {
+
+      if (result.ok) {
+        setState("subscribed");
+      } else {
+        console.error("[push] subscribeParticipantPush falló:", result.error);
+        setState("denied");
+      }
+    } catch (err) {
+      console.error("[push] handleEnable error:", err);
       setState("denied");
     }
   };
