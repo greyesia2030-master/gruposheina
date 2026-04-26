@@ -110,6 +110,7 @@ export default async function PedidoDetailPage({
     name: string;
     cutoff_time: string;
     cutoff_days_before: number;
+    timezone: string;
   } | null;
 
   const menu = order.menu as { id: string; week_start: string; week_end: string } | null;

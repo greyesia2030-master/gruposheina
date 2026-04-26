@@ -77,7 +77,7 @@ export async function transitionOrderStatus(
     if (order && order.status === "confirmed" && order.organization_id) {
       const { data: org } = await supabase
         .from("organizations")
-        .select("cutoff_time, cutoff_days_before")
+        .select("cutoff_time, cutoff_days_before, timezone")
         .eq("id", order.organization_id)
         .single();
 
@@ -176,7 +176,7 @@ export async function updateOrderLines(
   const { data: order, error: orderErr } = await supabase
     .from("orders")
     .select(
-      "status, menu_id, organization_id, menu:weekly_menus(week_start), organization:organizations(cutoff_time, cutoff_days_before)"
+      "status, menu_id, organization_id, menu:weekly_menus(week_start), organization:organizations(cutoff_time, cutoff_days_before, timezone)"
     )
     .eq("id", orderId)
     .single();
@@ -194,6 +194,7 @@ export async function updateOrderLines(
     (order.organization as unknown as {
       cutoff_time: string;
       cutoff_days_before: number;
+      timezone: string;
     }[] | null)?.[0] ?? null;
 
   const postCutoff = orgRow ? !isWithinCutoff(order, menuRow, orgRow) : false;

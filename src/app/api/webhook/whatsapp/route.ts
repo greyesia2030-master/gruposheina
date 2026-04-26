@@ -451,7 +451,7 @@ export async function POST(request: NextRequest) {
         if (order.status === 'confirmed') {
           const { data: org } = await supabase
             .from('organizations')
-            .select('cutoff_time, cutoff_days_before')
+            .select('cutoff_time, cutoff_days_before, timezone')
             .eq('id', client.organization_id)
             .single();
           if (org && !isWithinCutoff(order, order.menu, org)) {

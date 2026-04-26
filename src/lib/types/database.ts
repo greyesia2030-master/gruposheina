@@ -28,8 +28,9 @@ export interface Organization {
   contact_phone: string | null;
   email: string | null;
   delivery_address: string | null;
-  cutoff_time: string; // HH:MM
+  cutoff_time: string; // HH:MM or HH:MM:SS (postgres time)
   cutoff_days_before: number;
+  timezone: string; // IANA timezone, e.g. 'America/Argentina/Buenos_Aires'
   departments: string[];
   authorized_phones: string[];
   price_per_unit: number;
