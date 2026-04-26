@@ -44,7 +44,14 @@ export function PushPrompt({ participantId }: PushPromptProps) {
         applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
       });
 
-      const result = await subscribeParticipantPush(participantId, subscription.toJSON());
+      const json = subscription.toJSON();
+      const result = await subscribeParticipantPush({
+        participantId,
+        endpoint: subscription.endpoint,
+        p256dh: json.keys?.p256dh ?? '',
+        auth: json.keys?.auth ?? '',
+        userAgent: navigator.userAgent,
+      });
       setState(result.ok ? "subscribed" : "denied");
     } catch {
       setState("denied");
