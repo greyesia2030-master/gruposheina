@@ -149,10 +149,17 @@ export default async function PedidoDetailPage({
   return (
     <div>
       <PageHeader
-        title={`Pedido — ${order.week_label}`}
+        title={
+          <span className="flex items-center gap-2">
+            {`Pedido — ${order.week_label}`}
+            <span className="font-mono text-sm font-normal bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
+              {order.order_code}
+            </span>
+          </span>
+        }
         breadcrumbs={[
           { label: "Pedidos", href: "/pedidos" },
-          { label: order.week_label },
+          { label: order.order_code ?? order.week_label },
         ]}
         action={
           <div className="flex flex-wrap items-center gap-2">

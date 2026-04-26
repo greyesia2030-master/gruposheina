@@ -546,7 +546,7 @@ export async function closeOrderSectionFromPublicForm(
   // Check order status — trigger sets 'awaiting_confirmation' when all sections closed
   const { data: order } = await db
     .from("orders")
-    .select("status, organization_id, week_label")
+    .select("status, organization_id, week_label, order_code")
     .eq("id", participant.order_id)
     .maybeSingle();
 
@@ -602,7 +602,7 @@ export async function closeOrderSectionFromPublicForm(
               templateVariables: {
                 week_label: order.week_label,
                 organization_name: org.name as string,
-                order_code: participant.order_id.slice(0, 8).toUpperCase(),
+                order_code: order.order_code,
                 total_lines: (linesRes.count ?? 0).toString(),
                 total_participants: (partsRes.count ?? 0).toString(),
                 closed_sections: (secsRes.count ?? 0).toString(),

@@ -66,7 +66,7 @@ export default async function PedidosPage({
   let query = supabase
     .from("orders")
     .select(
-      "id, week_label, status, source, total_units, total_amount, payment_status, created_at, organization:organizations(id, name)"
+      "id, order_code, week_label, status, source, total_units, total_amount, payment_status, created_at, organization:organizations(id, name)"
     )
     .order("created_at", { ascending: false });
 
@@ -107,6 +107,7 @@ export default async function PedidosPage({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-text-secondary">
+                  <th className="px-4 py-3 font-medium">Código</th>
                   <th className="px-4 py-3 font-medium">Cliente</th>
                   <th className="px-4 py-3 font-medium">Semana</th>
                   <th className="px-4 py-3 font-medium">Estado</th>
@@ -132,6 +133,11 @@ export default async function PedidosPage({
                       href={`/pedidos/${order.id}`}
                       className="border-b border-border last:border-0 hover:bg-surface-hover"
                     >
+                      <td className="px-4 py-3">
+                        <span className="font-mono text-xs text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
+                          {(order as unknown as { order_code: string }).order_code}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 font-medium">
                         {org?.name ?? "—"}
                       </td>

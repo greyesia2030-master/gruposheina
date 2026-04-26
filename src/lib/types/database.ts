@@ -123,6 +123,7 @@ export interface Order {
   organization_id: string;
   menu_id: string | null;
   week_label: string;
+  order_code: string;
   status: OrderStatus;
   source: OrderSource;
   total_units: number;
