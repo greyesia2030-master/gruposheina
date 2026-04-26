@@ -1,4 +1,12 @@
+"use client";
+
+import { useSearchParams } from "next/navigation";
+import { PushPrompt } from "@/components/push-prompt";
+
 export default function GraciasPage() {
+  const searchParams = useSearchParams();
+  const participantId = searchParams.get("pid");
+
   return (
     <div className="max-w-md mx-auto py-20 px-4 text-center">
       <div className="text-6xl mb-5">✅</div>
@@ -8,7 +16,9 @@ export default function GraciasPage() {
         El equipo de Sheina ya tiene tu selección.
       </p>
 
-      <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 text-sm text-gray-600">
+      {participantId && <PushPrompt participantId={participantId} />}
+
+      <div className="mt-6 bg-orange-50 border border-orange-100 rounded-xl p-4 text-sm text-gray-600">
         Podés cerrar esta pestaña. No es necesario hacer nada más.
       </div>
     </div>

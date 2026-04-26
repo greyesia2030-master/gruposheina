@@ -3,6 +3,7 @@ import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin-client";
 import { sendCommunication } from "@/app/actions/communications";
+import { sendPushToOrderParticipants } from "@/app/actions/push";
 import type { MenuItem, OrderParticipant, OrderSection, OrderFormToken } from "@/lib/types/database";
 import type { OrderParticipantWithLines } from "@/lib/types/order-participant";
 
@@ -413,7 +414,7 @@ export async function upsertCartLine(
 
 export async function submitCart(
   accessToken: string
-): Promise<ActionResult<{ allSectionsClosed: boolean }>> {
+): Promise<ActionResult<{ allSectionsClosed: boolean; participantId: string }>> {
   const db = createAdminClient();
 
   const { data: participant } = await db
@@ -425,7 +426,9 @@ export async function submitCart(
   if (!participant) return { ok: false, error: "Participante no encontrado" };
   if (!participant.section_id) return { ok: false, error: "Participante sin sección asignada" };
 
-  return closeOrderSectionFromPublicForm(participant.section_id, participant.id);
+  const result = await closeOrderSectionFromPublicForm(participant.section_id, participant.id);
+  if (!result.ok) return result;
+  return { ok: true, data: { ...result.data, participantId: participant.id } };
 }
 
 // ─── recordOrderLineFromPublicForm ────────────────────────────────────────────
@@ -620,6 +623,17 @@ export async function closeOrderSectionFromPublicForm(
       }
     } catch (err) {
       console.error(`[${ts()}] [B.7] Error enviando email referente (no bloquea):`, err);
+    }
+
+    // [C.1.3] Push notification a todos los participantes con suscripción activa
+    try {
+      await sendPushToOrderParticipants(participant.order_id, {
+        title: "Grupo Sheina — Pedido listo",
+        body: `El pedido ${order?.order_code ?? ""} fue confirmado. El equipo de Sheina ya tiene tu selección.`,
+        url: `/pedido`,
+      });
+    } catch (err) {
+      console.error(`[${ts()}] [C.1.3] Error enviando push (no bloquea):`, err);
     }
   }
 

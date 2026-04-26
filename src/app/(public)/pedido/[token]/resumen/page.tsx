@@ -57,7 +57,7 @@ export default function ResumenPage() {
       return;
     }
     localStorage.removeItem(`access_token_${token}`);
-    router.push(`/pedido/${token}/gracias`);
+    router.push(`/pedido/${token}/gracias?pid=${result.data.participantId}`);
   };
 
   if (loading) return <PageLoading />;
