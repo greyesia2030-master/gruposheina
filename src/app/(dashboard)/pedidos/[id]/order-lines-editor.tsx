@@ -8,6 +8,7 @@ import { useToast } from "@/components/ui/toast";
 import { updateOrderLines } from "@/app/actions/orders";
 import { DAY_NAMES } from "@/lib/types/orders";
 import { Save, AlertTriangle } from "lucide-react";
+import { AdminEditableQuantity } from "./admin-editable-quantity";
 
 interface OrderLine {
   id: string;
@@ -17,6 +18,7 @@ interface OrderLine {
   quantity: number;
   option_code: string;
   display_name: string;
+  is_admin_override?: boolean;
 }
 
 interface DayOption {
@@ -25,6 +27,7 @@ interface DayOption {
   lineIds: Record<string, string>; // dept → line_id
   departments: Record<string, number>; // dept → qty
   total: number;
+  overrideQty: number; // sum of is_admin_override lines for this option
 }
 
 interface DayData {
@@ -40,6 +43,9 @@ interface OrderLinesEditorProps {
   departments: string[];
   isEditable: boolean;
   isPostCutoff: boolean;
+  isAdmin?: boolean;
+  hasOverrideByKey?: Record<string, boolean>;
+  isLocked?: boolean;
 }
 
 export function OrderLinesEditor({
@@ -48,6 +54,9 @@ export function OrderLinesEditor({
   departments,
   isEditable,
   isPostCutoff,
+  isAdmin = false,
+  hasOverrideByKey = {},
+  isLocked = false,
 }: OrderLinesEditorProps) {
   // Inicializar mapa de cantidades editables: lineId → qty
   const [quantities, setQuantities] = useState<Record<string, number>>(() =>
@@ -106,28 +115,46 @@ export function OrderLinesEditor({
 
       const optionMap = new Map<string, DayOption>();
       for (const line of dayLines) {
+        const qty = quantities[line.id] ?? line.quantity;
         const existing = optionMap.get(line.option_code);
+
+        if (line.is_admin_override) {
+          // Override lines accumulate in overrideQty, not in dept columns
+          if (existing) {
+            existing.overrideQty += qty;
+          } else {
+            optionMap.set(line.option_code, {
+              code: line.option_code,
+              name: line.display_name,
+              lineIds: {},
+              departments: {},
+              total: 0,
+              overrideQty: qty,
+            });
+          }
+          continue;
+        }
+
         if (existing) {
           existing.lineIds[line.department] = line.id;
-          existing.departments[line.department] = quantities[line.id] ?? line.quantity;
-          existing.total += quantities[line.id] ?? line.quantity;
+          existing.departments[line.department] = qty;
         } else {
           optionMap.set(line.option_code, {
             code: line.option_code,
             name: line.display_name,
             lineIds: { [line.department]: line.id },
-            departments: { [line.department]: quantities[line.id] ?? line.quantity },
-            total: quantities[line.id] ?? line.quantity,
+            departments: { [line.department]: qty },
+            total: 0,
+            overrideQty: 0,
           });
         }
       }
 
-      // Recalcular totals con quantities actuales
+      // Recalcular totals: dept columns + override lines
       for (const opt of optionMap.values()) {
-        opt.total = departments.reduce(
-          (sum, dept) => sum + (quantities[opt.lineIds[dept]] ?? 0),
-          0
-        );
+        opt.total =
+          departments.reduce((sum, dept) => sum + (quantities[opt.lineIds[dept]] ?? 0), 0) +
+          opt.overrideQty;
       }
 
       const dayTotal = dayLines.reduce((sum, l) => sum + (quantities[l.id] ?? l.quantity), 0);
@@ -183,7 +210,22 @@ export function OrderLinesEditor({
                           </td>
                         );
                       })}
-                      <td className="px-4 py-2 text-right font-semibold">{opt.total}</td>
+                      <td className="px-4 py-2 text-right">
+                        {isAdmin ? (
+                          <AdminEditableQuantity
+                            orderId={orderId}
+                            dayOfWeek={dayData.day}
+                            optionCode={opt.code}
+                            currentTotal={opt.total}
+                            hasOverride={hasOverrideByKey[`${dayData.day}_${opt.code}`] ?? false}
+                            disabled={isLocked}
+                          />
+                        ) : (
+                          <span className={`font-semibold ${hasOverrideByKey[`${dayData.day}_${opt.code}`] ? "text-amber-700" : ""}`}>
+                            {opt.total}
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                   <tr className="bg-surface-hover font-semibold">

@@ -589,3 +589,100 @@ export async function sendReminderToClient(orderId: string): Promise<ActionResul
     return fail(err instanceof Error ? err.message : "Error enviando recordatorio");
   }
 }
+
+// ============================================================================
+// applyAdminOverride — edición admin del consolidado (D.6)
+// ============================================================================
+
+const overrideSchema = z.object({
+  orderId:    z.string().uuid(),
+  dayOfWeek:  z.number().int().min(1).max(5),
+  optionCode: z.string().min(1).max(10),
+  newTotal:   z.number().int().min(0),
+  reason:     z.string().trim().min(1, "Razón obligatoria").max(500),
+});
+
+export async function applyAdminOverride(
+  input: z.input<typeof overrideSchema>
+): Promise<ActionResult<{ delta: number; newLineId: string }>> {
+  const auth = await handleAuth();
+  if (!auth.ok) return auth;
+  if (!["superadmin", "admin"].includes(auth.user.role)) {
+    return fail("Se requiere rol de administrador");
+  }
+
+  const parsed = overrideSchema.safeParse(input);
+  if (!parsed.success) return fail(parsed.error.issues[0].message);
+  const { orderId, dayOfWeek, optionCode, newTotal, reason } = parsed.data;
+
+  const supabase = await createSupabaseAdmin();
+
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, status")
+    .eq("id", orderId)
+    .single();
+  if (!order) return fail("Pedido no encontrado");
+  if (["delivered", "cancelled"].includes(order.status)) {
+    return fail("No se puede modificar un pedido entregado o cancelado");
+  }
+
+  const { data: existingLines } = await supabase
+    .from("order_lines")
+    .select("id, quantity, unit_price, display_name, menu_item_id, section_id, department, participant_id")
+    .eq("order_id", orderId)
+    .eq("day_of_week", dayOfWeek)
+    .eq("option_code", optionCode);
+
+  const currentTotal = (existingLines ?? []).reduce((s, l) => s + (l.quantity ?? 0), 0);
+  const delta = newTotal - currentTotal;
+  if (delta === 0) return fail("El total no cambió");
+
+  const template = existingLines?.find((l) => l.participant_id !== null) ?? existingLines?.[0];
+  if (!template) return fail("No hay líneas previas para esta opción");
+
+  const { data: inserted, error: insErr } = await supabase
+    .from("order_lines")
+    .insert({
+      order_id:            orderId,
+      day_of_week:         dayOfWeek,
+      option_code:         optionCode,
+      display_name:        template.display_name,
+      department:          template.department,
+      quantity:            delta,
+      unit_price:          template.unit_price,
+      participant_id:      null,
+      section_id:          null,
+      menu_item_id:        template.menu_item_id,
+      is_admin_override:   true,
+      admin_override_by:   auth.user.id,
+      admin_override_reason: reason,
+      admin_override_at:   new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+
+  if (insErr) return fail(insErr.message);
+
+  await createOrderEvent({
+    orderId,
+    eventType: "override",
+    actorId:   auth.user.id,
+    actorRole: "admin",
+    payload: {
+      day_of_week:     dayOfWeek,
+      option_code:     optionCode,
+      previous_total:  currentTotal,
+      new_total:       newTotal,
+      delta,
+      reason,
+      override_line_id: inserted.id,
+    },
+  });
+
+  revalidatePath("/pedidos");
+  revalidatePath(`/pedidos/${orderId}`);
+  revalidatePath("/");
+
+  return ok({ delta, newLineId: inserted.id });
+}

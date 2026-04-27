@@ -155,6 +155,11 @@ export interface OrderLine {
   // FoodSync v2 additions
   section_id: string | null;
   participant_id: string | null;
+  // D.6 admin override
+  is_admin_override: boolean;
+  admin_override_by: string | null;
+  admin_override_reason: string | null;
+  admin_override_at: string | null;
 }
 
 export interface OrderEvent {

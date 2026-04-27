@@ -127,8 +127,21 @@ export default async function PedidoDetailPage({
   // Post-corte: confirmado pero fuera de ventana
   const isPostCutoff = order.status === "confirmed" && !withinCutoff;
 
-  // Detectar departamentos usados (orden consistente)
-  const departments = [...new Set(lines.map((l) => l.department))].sort();
+  // Detectar departamentos usados — excluir líneas de override admin
+  const departments = [
+    ...new Set(lines.filter((l) => !l.is_admin_override).map((l) => l.department)),
+  ].sort();
+
+  // Mapa override por (day, optionCode) para badge ámbar en consolidado
+  const hasOverrideByKey: Record<string, boolean> = {};
+  for (const line of lines) {
+    if (line.is_admin_override) {
+      hasOverrideByKey[`${line.day_of_week}_${line.option_code}`] = true;
+    }
+  }
+
+  const isAdmin = hasRole(currentUser.role, "admin");
+  const isLocked = ["delivered", "cancelled"].includes(order.status);
 
   // Mostrar botón de recalcular inventario si es admin y el pedido está en producción/entregado sin movimientos
   const canRetryInventory =
@@ -274,6 +287,9 @@ export default async function PedidoDetailPage({
             departments={departments}
             isEditable={isEditable}
             isPostCutoff={isPostCutoff}
+            isAdmin={isAdmin}
+            hasOverrideByKey={hasOverrideByKey}
+            isLocked={isLocked}
           />
         ) : (
           <Card>
