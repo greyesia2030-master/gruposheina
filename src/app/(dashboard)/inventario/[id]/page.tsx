@@ -66,23 +66,22 @@ export default async function InventarioDetailPage({
     )
     .eq("inventory_item_id", id);
 
-  // Supabase devuelve los joins como arrays aunque sean !inner
+  // FK singular → PostgREST devuelve objeto, no array
   type RecipeRow = {
     recipe_version: {
       is_current: boolean;
-      recipe: { id: string; name: string; is_active: boolean }[];
-    }[];
+      recipe: { id: string; name: string; is_active: boolean } | null;
+    } | null;
   };
 
   const activeRecipes: { name: string; recipeId: string }[] = [];
   const seen = new Set<string>();
   for (const row of (recipeIngData ?? []) as unknown as RecipeRow[]) {
-    for (const rv of row.recipe_version ?? []) {
-      const recipe = rv.recipe?.[0];
-      if (rv.is_current && recipe?.is_active && !seen.has(recipe.id)) {
-        seen.add(recipe.id);
-        activeRecipes.push({ name: recipe.name, recipeId: recipe.id });
-      }
+    const rv = row.recipe_version;
+    const recipe = rv?.recipe;
+    if (rv?.is_current && recipe?.is_active && !seen.has(recipe.id)) {
+      seen.add(recipe.id);
+      activeRecipes.push({ name: recipe.name, recipeId: recipe.id });
     }
   }
 
@@ -220,7 +219,7 @@ export default async function InventarioDetailPage({
                         {mov.reason ?? "—"}
                       </td>
                       <td className="px-4 py-3 text-text-secondary">
-                        {(mov.actor as unknown as { full_name: string }[] | null)?.[0]?.full_name ?? "Sistema"}
+                        {(mov.actor as unknown as { full_name: string } | null)?.full_name ?? "Sistema"}
                       </td>
                     </tr>
                   ))}
