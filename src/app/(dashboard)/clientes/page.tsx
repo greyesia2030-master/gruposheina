@@ -28,7 +28,7 @@ export default async function ClientesPage() {
     supabase
       .from("orders")
       .select("organization_id")
-      .in("status", ["draft", "confirmed", "in_production"]),
+      .not("status", "in", "(delivered,cancelled)"),
   ]);
 
   const orgs = (data ?? []) as Organization[];
