@@ -19,15 +19,23 @@ interface ActionConfig {
 
 const ACTIONS: Partial<Record<OrderStatus, ActionConfig[]>> = {
   draft: [
-    { label: "Confirmar pedido", newStatus: "confirmed",     variant: "primary" },
-    { label: "Cancelar",         newStatus: "cancelled",     variant: "danger" },
+    { label: "Confirmar pedido",    newStatus: "confirmed",     variant: "primary" },
+    { label: "Cancelar",            newStatus: "cancelled",     variant: "danger" },
+  ],
+  awaiting_confirmation: [
+    { label: "Confirmar pedido",    newStatus: "confirmed",     variant: "primary" },
+    { label: "Cancelar",            newStatus: "cancelled",     variant: "danger" },
+  ],
+  partially_filled: [
+    { label: "Forzar confirmación", newStatus: "confirmed",     variant: "secondary" },
+    { label: "Cancelar",            newStatus: "cancelled",     variant: "danger" },
   ],
   confirmed: [
-    { label: "A producción",     newStatus: "in_production", variant: "primary" },
-    { label: "Cancelar",         newStatus: "cancelled",     variant: "danger", requiresCutoff: true },
+    { label: "A producción",        newStatus: "in_production", variant: "primary" },
+    { label: "Cancelar",            newStatus: "cancelled",     variant: "danger", requiresCutoff: true },
   ],
   in_production: [
-    { label: "Marcar entregado", newStatus: "delivered",     variant: "primary" },
+    { label: "Marcar entregado",    newStatus: "delivered",     variant: "primary" },
   ],
 };
 

@@ -14,11 +14,16 @@ interface Transition {
 }
 
 const TRANSITIONS: Transition[] = [
-  { from: 'draft', to: 'confirmed' },
-  { from: 'confirmed', to: 'in_production', requiredRoles: ['superadmin', 'admin', 'operator'] },
-  { from: 'in_production', to: 'delivered', requiredRoles: ['superadmin', 'admin', 'operator'] },
-  { from: 'draft', to: 'cancelled' },
-  { from: 'confirmed', to: 'cancelled', requiresCutoff: true },
+  { from: 'draft',                  to: 'confirmed' },
+  { from: 'awaiting_confirmation',  to: 'confirmed' },
+  { from: 'partially_filled',       to: 'confirmed' },
+  { from: 'confirmed',              to: 'in_production', requiredRoles: ['superadmin', 'admin', 'operator'] },
+  { from: 'in_production',          to: 'delivered',     requiredRoles: ['superadmin', 'admin', 'operator'] },
+  { from: 'draft',                  to: 'cancelled' },
+  { from: 'awaiting_confirmation',  to: 'cancelled' },
+  { from: 'partially_filled',       to: 'cancelled' },
+  { from: 'confirmed',              to: 'cancelled', requiresCutoff: true },
+  { from: 'in_production',          to: 'cancelled', requiredRoles: ['superadmin', 'admin'] },
 ];
 
 /**
