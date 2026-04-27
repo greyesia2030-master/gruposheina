@@ -1,210 +1,97 @@
 export const dynamic = "force-dynamic";
 
-import Link from "next/link";
-import { PageHeader } from "@/components/layout/page-header";
-import { Card } from "@/components/ui/card";
-import { OrderStatusBadge } from "@/components/ui/badge";
-import { ClickableRow } from "@/app/(dashboard)/pedidos/clickable-row";
 import { createSupabaseServer } from "@/lib/supabase/server";
-import {
-  ClipboardList,
-  UtensilsCrossed,
-  AlertTriangle,
-  Package,
-  TrendingDown,
-} from "lucide-react";
+import { DashboardKPIs } from "@/components/dashboard/kpis";
+import { DashboardChartViandasPorDia } from "@/components/dashboard/chart-viandas-dia";
+import { DashboardChartEstados } from "@/components/dashboard/chart-estados";
+import { DashboardProximasEntregas } from "@/components/dashboard/proximas-entregas";
 
 export default async function DashboardPage() {
   const supabase = await createSupabaseServer();
 
-  // Consultas en paralelo
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-
-  const [ordersToday, inProduction, draftCount, pendingPayments] = await Promise.all([
+  const [ordersRes, linesRes] = await Promise.all([
     supabase
       .from("orders")
-      .select("id", { count: "exact", head: true })
-      .gte("created_at", todayStart.toISOString()),
+      .select(
+        "id, order_code, status, total_units, week_label, created_at, organization_id, organization:organizations(name)"
+      )
+      .order("created_at", { ascending: false }),
     supabase
-      .from("orders")
-      .select("id, total_units")
-      .eq("status", "in_production"),
-    supabase
-      .from("orders")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "draft"),
-    supabase
-      .from("orders")
-      .select("id", { count: "exact", head: true })
-      .in("payment_status", ["pending", "overdue"]),
+      .from("order_lines")
+      .select("quantity, menu_item:menu_items(day_of_week), order:orders(status)"),
   ]);
 
-  const viandas =
-    inProduction.data?.reduce((sum, o) => sum + (o.total_units ?? 0), 0) ?? 0;
+  const orders = ordersRes.data ?? [];
+  const lines = linesRes.data ?? [];
 
-  const stats = [
-    {
-      label: "Pedidos hoy",
-      value: ordersToday.count ?? 0,
-      icon: ClipboardList,
-      color: "primary",
-      href: "/pedidos",
-    },
-    {
-      label: "Viandas a producir",
-      value: viandas,
-      icon: Package,
-      color: "success",
-      href: "/pedidos?status=in_production",
-    },
-    {
-      label: "Pendientes de confirmar",
-      value: draftCount.count ?? 0,
-      icon: UtensilsCrossed,
-      color: "info",
-      href: "/pedidos?status=draft",
-    },
-    {
-      label: "Pagos pendientes",
-      value: pendingPayments.count ?? 0,
-      icon: AlertTriangle,
-      color: "warning",
-      href: "/pedidos",
-    },
-  ];
+  // ── KPIs ──────────────────────────────────────────────────────────────────
+  const INACTIVE = ["delivered", "cancelled"];
+  const SKIP_TICKET = ["cancelled", "draft"];
 
-  // Insumos con stock bajo
-  const { data: allInventory } = await supabase
-    .from("inventory_items")
-    .select("id, name, current_stock, min_stock, unit, category")
-    .eq("is_active", true);
+  const activeOrders = orders.filter((o) => !INACTIVE.includes(o.status));
+  const kpiPedidosActivos = activeOrders.length;
+  const kpiViandasSemana = activeOrders.reduce((s, o) => s + (o.total_units ?? 0), 0);
 
-  const lowStockItems = (allInventory ?? []).filter(
-    (i) => i.current_stock < i.min_stock
-  );
+  const cutoff = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const kpiClientesActivos = new Set(
+    orders.filter((o) => o.created_at > cutoff).map((o) => o.organization_id)
+  ).size;
 
-  // Últimos pedidos
-  const { data: recentOrders } = await supabase
-    .from("orders")
-    .select("id, week_label, status, total_units, source, created_at, organization:organizations(name)")
-    .order("created_at", { ascending: false })
-    .limit(5);
+  const forTicket = orders.filter((o) => !SKIP_TICKET.includes(o.status));
+  const kpiTicketPromedio =
+    forTicket.length > 0
+      ? Math.round(forTicket.reduce((s, o) => s + (o.total_units ?? 0), 0) / forTicket.length)
+      : 0;
+
+  // ── Chart 1: viandas por día ───────────────────────────────────────────────
+  const viandasPorDia: Record<number, number> = {};
+  for (const l of lines) {
+    const orderStatus = (l.order as unknown as { status: string } | null)?.status ?? "";
+    if (INACTIVE.includes(orderStatus) || orderStatus === "draft") continue;
+    const day = (l.menu_item as unknown as { day_of_week: number } | null)?.day_of_week;
+    if (!day) continue;
+    viandasPorDia[day] = (viandasPorDia[day] ?? 0) + (l.quantity ?? 0);
+  }
+  const DAY_NAMES = ["Lun", "Mar", "Mié", "Jue", "Vie"];
+  const chartViandas = [1, 2, 3, 4, 5].map((d) => ({
+    dia: DAY_NAMES[d - 1],
+    viandas: viandasPorDia[d] ?? 0,
+  }));
+
+  // ── Chart 2: pedidos por estado ────────────────────────────────────────────
+  const estadosCount: Record<string, number> = {};
+  for (const o of orders) {
+    estadosCount[o.status] = (estadosCount[o.status] ?? 0) + 1;
+  }
+  const chartEstados = Object.entries(estadosCount).map(([estado, cantidad]) => ({
+    estado,
+    cantidad,
+  }));
+
+  // ── Tabla próximas entregas ────────────────────────────────────────────────
+  type OrderRow = (typeof orders)[number];
+  const proximas: OrderRow[] = activeOrders.slice(0, 10);
 
   return (
-    <div>
-      <PageHeader title="Dashboard" />
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat) => (
-          <Link key={stat.label} href={stat.href}>
-            <Card className="transition-shadow hover:shadow-md">
-              <div className="flex items-center gap-4 p-6">
-                <div className={`rounded-lg bg-${stat.color}/10 p-3`}>
-                  <stat.icon className={`h-6 w-6 text-${stat.color}`} />
-                </div>
-                <div>
-                  <p className="text-sm text-text-secondary">{stat.label}</p>
-                  <p className="text-2xl font-bold">{stat.value}</p>
-                </div>
-              </div>
-            </Card>
-          </Link>
-        ))}
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-stone-900">Panel general</h1>
+        <p className="text-sm text-stone-500 mt-1">Resumen operativo de Grupo Sheina</p>
       </div>
 
-      {/* Alertas de stock bajo */}
-      {lowStockItems.length > 0 && (
-        <div className="mt-8">
-          <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <TrendingDown className="h-5 w-5 text-error" />
-              <h2 className="text-lg font-semibold">Stock bajo</h2>
-              <span className="rounded-full bg-error/10 px-2 py-0.5 text-xs font-medium text-error">
-                {lowStockItems.length}
-              </span>
-            </div>
-            <Link href="/inventario" className="text-sm text-primary hover:underline">
-              Ver inventario
-            </Link>
-          </div>
-          <Card>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-text-secondary">
-                    <th className="px-4 py-3 font-medium">Insumo</th>
-                    <th className="px-4 py-3 font-medium text-right">Stock actual</th>
-                    <th className="px-4 py-3 font-medium text-right">Mínimo</th>
-                    <th className="px-4 py-3 font-medium">Unidad</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lowStockItems.map((item) => (
-                    <tr key={item.id} className="border-b border-border last:border-0 hover:bg-surface-hover">
-                      <td className="px-4 py-3">
-                        <Link href={`/inventario/${item.id}`} className="font-medium hover:text-primary">
-                          {item.name}
-                        </Link>
-                      </td>
-                      <td className={`px-4 py-3 text-right font-bold ${item.current_stock === 0 ? "text-error" : "text-warning"}`}>
-                        {item.current_stock}
-                      </td>
-                      <td className="px-4 py-3 text-right text-text-secondary">{item.min_stock}</td>
-                      <td className="px-4 py-3 text-text-secondary">{item.unit}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </div>
-      )}
+      <DashboardKPIs
+        activos={kpiPedidosActivos}
+        viandas={kpiViandasSemana}
+        clientes={kpiClientesActivos}
+        ticket={kpiTicketPromedio}
+      />
 
-      {/* Últimos pedidos */}
-      <div className="mt-8">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Últimos pedidos</h2>
-          <Link href="/pedidos" className="text-sm text-primary hover:underline">
-            Ver todos
-          </Link>
-        </div>
-
-        {recentOrders && recentOrders.length > 0 ? (
-          <Card>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-text-secondary">
-                    <th className="px-4 py-3 font-medium">Cliente</th>
-                    <th className="px-4 py-3 font-medium">Semana</th>
-                    <th className="px-4 py-3 font-medium">Estado</th>
-                    <th className="px-4 py-3 font-medium text-right">Viandas</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentOrders.map((order) => (
-                    <ClickableRow key={order.id} href={`/pedidos/${order.id}`} className="border-b border-border last:border-0 hover:bg-surface-hover">
-                      <td className="px-4 py-3 font-medium">
-                        {(order.organization as unknown as { name: string } | null)?.name ?? "—"}
-                      </td>
-                      <td className="px-4 py-3">{order.week_label}</td>
-                      <td className="px-4 py-3">
-                        <OrderStatusBadge status={order.status as import("@/lib/types/database").OrderStatus} />
-                      </td>
-                      <td className="px-4 py-3 text-right font-medium">{order.total_units}</td>
-                    </ClickableRow>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        ) : (
-          <Card>
-            <p className="p-8 text-center text-text-secondary">No hay pedidos aún</p>
-          </Card>
-        )}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <DashboardChartViandasPorDia data={chartViandas} />
+        <DashboardChartEstados data={chartEstados} />
       </div>
+
+      <DashboardProximasEntregas orders={proximas} />
     </div>
   );
 }
