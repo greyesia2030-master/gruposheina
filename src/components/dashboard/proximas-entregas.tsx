@@ -50,22 +50,33 @@ export function DashboardProximasEntregas({ orders }: { orders: Order[] }) {
               const s = STATUS_LABELS[o.status] ?? { label: o.status, cls: "bg-stone-100 text-stone-700" };
               const clienteName = (o.organization as { name: string } | null)?.name ?? "—";
               return (
-                <tr key={o.id} className="border-t border-stone-100 hover:bg-stone-50">
-                  <td className="px-5 py-3">
-                    <Link
-                      href={`/pedidos/${o.id}`}
-                      className="font-mono text-xs text-stone-700 hover:text-[#D4622B]"
-                    >
+                <tr key={o.id} className="border-t border-stone-100 hover:bg-stone-50 transition-colors group cursor-pointer">
+                  <td className="p-0">
+                    <Link href={`/pedidos/${o.id}`} className="block px-5 py-3 font-mono text-xs text-stone-700 group-hover:text-[#D4622B]">
                       {o.order_code}
                     </Link>
                   </td>
-                  <td className="px-5 py-3 text-stone-800">{clienteName}</td>
-                  <td className="px-5 py-3 text-stone-600">{o.week_label ?? "—"}</td>
-                  <td className="px-5 py-3 text-right font-medium">{o.total_units ?? 0}</td>
-                  <td className="px-5 py-3">
-                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${s.cls}`}>
-                      {s.label}
-                    </span>
+                  <td className="p-0">
+                    <Link href={`/pedidos/${o.id}`} className="block px-5 py-3 text-stone-800">
+                      {clienteName}
+                    </Link>
+                  </td>
+                  <td className="p-0">
+                    <Link href={`/pedidos/${o.id}`} className="block px-5 py-3 text-stone-600">
+                      {o.week_label ?? "—"}
+                    </Link>
+                  </td>
+                  <td className="p-0">
+                    <Link href={`/pedidos/${o.id}`} className="block px-5 py-3 text-right font-medium text-stone-800">
+                      {o.total_units ?? 0}
+                    </Link>
+                  </td>
+                  <td className="p-0">
+                    <Link href={`/pedidos/${o.id}`} className="block px-5 py-3">
+                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${s.cls}`}>
+                        {s.label}
+                      </span>
+                    </Link>
                   </td>
                 </tr>
               );
