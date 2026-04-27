@@ -45,10 +45,10 @@ export function Sidebar() {
             key={href}
             href={href}
             onClick={() => setOpen(false)}
-            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150 ${
               active
-                ? "border-l-3 border-primary bg-primary/10 text-primary"
-                : "text-text-secondary hover:bg-surface-hover hover:text-text"
+                ? "border-l-2 border-[#D4622B] bg-[#D4622B]/10 text-[#D4622B]"
+                : "text-stone-600 hover:bg-stone-100/60 hover:text-stone-900"
             }`}
           >
             <Icon className="h-5 w-5 shrink-0" />
@@ -84,20 +84,20 @@ export function Sidebar() {
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex items-center justify-between border-b border-border px-4 py-4">
-          <span className="text-lg font-bold text-primary">Grupo Sheina</span>
+        <div className="flex items-center justify-between border-b border-stone-200/80 px-4 py-4">
+          <span className="font-heading text-xl font-medium text-[#D4622B]">Grupo Sheina</span>
           <button onClick={() => setOpen(false)} aria-label="Cerrar menú">
-            <X className="h-5 w-5" />
+            <X className="h-5 w-5 text-stone-500" />
           </button>
         </div>
         {navContent}
       </aside>
 
       {/* Desktop sidebar */}
-      <aside className="hidden w-64 shrink-0 border-r border-border bg-surface lg:block">
-        <div className="border-b border-border px-6 py-5">
-          <span className="text-lg font-bold text-primary">Grupo Sheina</span>
-          <p className="text-xs text-text-secondary mt-0.5">Gestión de Viandas</p>
+      <aside className="hidden w-64 shrink-0 border-r border-stone-200/80 bg-surface lg:block">
+        <div className="border-b border-stone-200/80 px-6 py-5">
+          <span className="font-heading text-xl font-medium text-[#D4622B]">Grupo Sheina</span>
+          <p className="text-xs text-stone-500 mt-0.5 tracking-wide">Gestión de Viandas</p>
         </div>
         {navContent}
       </aside>

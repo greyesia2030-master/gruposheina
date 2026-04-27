@@ -27,9 +27,9 @@ export function DashboardProximasEntregas({ orders }: { orders: Order[] }) {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-      <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
-        <h3 className="text-sm font-medium text-stone-700">Próximas entregas</h3>
+    <div className="bg-white rounded-2xl border border-stone-200/80 overflow-hidden">
+      <div className="px-6 py-4 border-b border-stone-200/80 flex items-center justify-between">
+        <h3 className="font-heading text-lg font-medium text-stone-900">Próximas entregas</h3>
         <Link href="/pedidos" className="text-xs text-[#D4622B] hover:underline">
           Ver todos →
         </Link>

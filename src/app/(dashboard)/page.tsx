@@ -74,9 +74,16 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-stone-900">Panel general</h1>
-        <p className="text-sm text-stone-500 mt-1">Resumen operativo de Grupo Sheina</p>
+      <div className="mb-2">
+        <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-stone-500 mb-2">
+          Panel general
+        </p>
+        <h1 className="font-heading text-4xl font-light text-stone-900 leading-tight">
+          Buen <em className="italic font-medium text-[#D4622B]">trabajo</em>, seguí así.
+        </h1>
+        <p className="text-sm text-stone-500 mt-2 max-w-xl">
+          Resumen operativo de Grupo Sheina — pedidos activos, viandas comprometidas y métricas semanales.
+        </p>
       </div>
 
       <DashboardKPIs
