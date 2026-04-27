@@ -82,8 +82,20 @@ export function PushPrompt({ participantId }: PushPromptProps) {
     }
   };
 
-  if (state === "unsupported" || state === "subscribed" || state === "denied") {
+  if (state === "unsupported" || state === "subscribed") {
     return null;
+  }
+
+  if (state === "denied") {
+    return (
+      <div className="mt-6 bg-stone-50 border border-stone-200 rounded-xl p-4 text-left">
+        <p className="text-sm font-medium text-stone-700 mb-1">Notificaciones bloqueadas</p>
+        <p className="text-xs text-stone-500">
+          Permitílas desde la configuración del navegador para recibir avisos
+          cuando el pedido esté listo.
+        </p>
+      </div>
+    );
   }
 
   return (

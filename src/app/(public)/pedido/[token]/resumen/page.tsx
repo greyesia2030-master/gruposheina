@@ -119,7 +119,7 @@ export default function ResumenPage() {
         size="lg"
         className="w-full mb-3 bg-green-600 hover:bg-green-700"
         onClick={handleConfirm}
-        disabled={submitting || lines.length === 0}
+        disabled={submitting || totalQty === 0}
         loading={submitting}
       >
         Confirmar y cerrar aporte

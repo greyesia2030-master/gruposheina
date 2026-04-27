@@ -166,7 +166,7 @@ export async function updateItem(
     .eq("id", data.id);
 
   if (error) {
-    return fail("Error al guardar cambios");
+    return fail(error.message || "Error al guardar cambios");
   }
 
   revalidatePath("/inventario");
@@ -233,7 +233,7 @@ export async function deactivateItem(
     .eq("id", parsed.data.id);
 
   if (error) {
-    return fail("Error al desactivar el insumo");
+    return fail(error.message || "Error al desactivar el insumo");
   }
 
   revalidatePath("/inventario");

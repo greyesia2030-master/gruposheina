@@ -81,7 +81,7 @@ export async function transitionOrderStatus(
         .eq("id", order.organization_id)
         .single();
 
-      const menuRow = (order.menu as unknown as { week_start: string }[] | null)?.[0] ?? null;
+      const menuRow = (order.menu as unknown as { week_start: string } | null) ?? null;
       if (org && !isWithinCutoff(order, menuRow, org)) {
         await createOrderEvent({
           orderId: data.orderId,
@@ -189,13 +189,13 @@ export async function updateOrderLines(
   }
 
   const menuRow =
-    (order.menu as unknown as { week_start: string }[] | null)?.[0] ?? null;
+    (order.menu as unknown as { week_start: string } | null) ?? null;
   const orgRow =
     (order.organization as unknown as {
       cutoff_time: string;
       cutoff_days_before: number;
       timezone: string;
-    }[] | null)?.[0] ?? null;
+    } | null) ?? null;
 
   const postCutoff = orgRow ? !isWithinCutoff(order, menuRow, orgRow) : false;
   if (postCutoff && !reason?.trim()) {

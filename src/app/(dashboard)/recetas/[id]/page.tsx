@@ -128,7 +128,7 @@ export default async function RecetaDetailPage({
                 </thead>
                 <tbody>
                   {versions.map((v) => {
-                    const creator = (v.creator as unknown as { full_name: string }[] | null)?.[0] ?? null;
+                    const creator = (v.creator as unknown as { full_name: string } | null) ?? null;
                     return (
                       <tr key={v.id} className="border-b border-border last:border-0">
                         <td className="px-4 py-3 font-mono font-bold">v{v.version}</td>

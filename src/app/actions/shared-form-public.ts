@@ -426,6 +426,16 @@ export async function submitCart(
   if (!participant) return { ok: false, error: "Participante no encontrado" };
   if (!participant.section_id) return { ok: false, error: "Participante sin sección asignada" };
 
+  // Validate at least 1 unit selected before closing the section
+  const { data: lines } = await db
+    .from("order_lines")
+    .select("quantity")
+    .eq("participant_id", participant.id);
+  const totalQty = (lines ?? []).reduce((s, l) => s + (l.quantity ?? 0), 0);
+  if (totalQty === 0) {
+    return { ok: false, error: "Tenés que seleccionar al menos 1 vianda antes de enviar" };
+  }
+
   const result = await closeOrderSectionFromPublicForm(participant.section_id, participant.id);
   if (!result.ok) return result;
   return { ok: true, data: { ...result.data, participantId: participant.id } };
