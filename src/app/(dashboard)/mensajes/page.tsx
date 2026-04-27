@@ -1,102 +1,101 @@
-import { createSupabaseServer } from "@/lib/supabase/server";
-import Link from "next/link";
+import { PageHeader } from "@/components/layout/page-header";
+import { MessageSquare, Sparkles, Clock, CheckCircle2 } from "lucide-react";
 
-const CATEGORY_LABELS: Record<string, string> = {
-  pedido_confirmacion: "Confirmación",
-  pedido_modificacion: "Modificación",
-  facturacion: "Facturación",
-  soporte: "Soporte",
-  recordatorio_pago: "Recordatorio",
-  entrega_notificacion: "Entrega",
-  otro: "Otro",
-};
+const ROADMAP_FEATURES = [
+  {
+    title: "Recepción de pedidos por WhatsApp",
+    description: "Cliente envía mensaje, sistema crea pedido draft automáticamente con NLP",
+    status: "Próximamente",
+    icon: MessageSquare,
+  },
+  {
+    title: "Notificaciones de estado al referente",
+    description: "Confirmaciones, cambios de estado y recordatorios automáticos via WhatsApp Business",
+    status: "Próximamente",
+    icon: Clock,
+  },
+  {
+    title: "Bandeja unificada admin",
+    description: "Todas las conversaciones de clientes consolidadas con etiquetas, asignaciones y SLA",
+    status: "Próximamente",
+    icon: Sparkles,
+  },
+  {
+    title: "Plantillas pre-aprobadas Meta",
+    description: "Templates HSM para envíos masivos en cumplimiento con políticas de WhatsApp Business",
+    status: "Próximamente",
+    icon: CheckCircle2,
+  },
+];
 
-export default async function MensajesPage() {
-  const supabase = await createSupabaseServer();
-
-  const { data: threads } = await supabase
-    .from("communication_threads")
-    .select(`
-      id, subject, status, category, last_message_at, unread_count,
-      organizations(id, name, member_id)
-    `)
-    .order("last_message_at", { ascending: false })
-    .limit(50);
-
-  const list = (threads ?? []) as unknown as Array<{
-    id: string;
-    subject: string | null;
-    status: string;
-    category: string;
-    last_message_at: string;
-    unread_count: number;
-    organizations: { id: string; name: string; member_id: string | null } | null;
-  }>;
-
+export default function MensajesPage() {
   return (
-    <div className="max-w-4xl mx-auto py-8 px-4">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Mensajes</h1>
-        <span className="text-sm text-gray-500">{list.length} conversaciones</span>
-      </div>
+    <div>
+      <PageHeader
+        title="Mensajes"
+        breadcrumbs={[{ label: "Mensajes" }]}
+      />
 
-      <div className="border rounded-xl overflow-hidden bg-white">
-        {list.length === 0 ? (
-          <div className="px-4 py-16 text-center text-gray-400">
-            <p className="text-4xl mb-3">💬</p>
-            <p className="text-sm">No hay conversaciones todavía</p>
+      <div className="max-w-4xl">
+        {/* Hero */}
+        <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-8 mb-6">
+          <div className="flex items-start gap-4">
+            <div className="bg-[#D4622B] rounded-xl p-3 flex-shrink-0">
+              <MessageSquare className="h-6 w-6 text-white" />
+            </div>
+            <div className="flex-1">
+              <div className="inline-flex items-center gap-1.5 bg-amber-200 text-amber-900 text-xs font-medium px-2.5 py-1 rounded-full mb-3">
+                <Sparkles className="h-3 w-3" />
+                Módulo en preparación
+              </div>
+              <h2 className="text-xl font-bold text-stone-900 mb-2">
+                Centro de mensajes
+              </h2>
+              <p className="text-sm text-stone-700 mb-4">
+                Próximamente vas a poder gestionar todas las comunicaciones con tus clientes
+                desde un solo lugar: WhatsApp, email y SMS unificados con respuestas automáticas,
+                plantillas y asignaciones por equipo.
+              </p>
+              <p className="text-xs text-stone-600">
+                Disponible en la próxima fase del roadmap. Si necesitás priorizar este módulo,
+                contactanos.
+              </p>
+            </div>
           </div>
-        ) : (
-          <div className="divide-y">
-            {list.map((thread) => {
-              const orgInitial = thread.organizations?.name?.charAt(0)?.toUpperCase() ?? "?";
-              const isUnread = thread.unread_count > 0;
+        </div>
 
+        {/* Roadmap */}
+        <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-stone-200">
+            <h3 className="text-sm font-medium text-stone-700">Funcionalidades planificadas</h3>
+          </div>
+          <ul className="divide-y divide-stone-100">
+            {ROADMAP_FEATURES.map((f) => {
+              const Icon = f.icon;
               return (
-                <Link
-                  key={thread.id}
-                  href={`/mensajes/${thread.id}`}
-                  className="flex items-center gap-4 px-4 py-4 hover:bg-gray-50 transition-colors"
-                >
-                  {/* Avatar */}
-                  <div className="w-10 h-10 rounded-full bg-[#D4622B]/10 text-[#D4622B] flex items-center justify-center font-semibold flex-shrink-0 text-sm">
-                    {orgInitial}
+                <li key={f.title} className="px-6 py-4 flex items-start gap-4">
+                  <div className="bg-stone-100 rounded-lg p-2 flex-shrink-0">
+                    <Icon className="h-4 w-4 text-stone-500" />
                   </div>
-
-                  {/* Content */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <p className={`truncate ${isUnread ? "font-semibold text-gray-900" : "font-medium text-gray-700"}`}>
-                        {thread.organizations?.name ?? "Sin organización"}
-                      </p>
-                      <span className="text-xs text-gray-400 flex-shrink-0 ml-2">
-                        {new Date(thread.last_message_at).toLocaleDateString("es-AR", {
-                          day: "numeric",
-                          month: "short",
-                        })}
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <h4 className="text-sm font-medium text-stone-900">{f.title}</h4>
+                      <span className="text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded flex-shrink-0">
+                        {f.status}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <p className={`text-sm truncate flex-1 ${isUnread ? "text-gray-700" : "text-gray-500"}`}>
-                        {thread.subject ?? "Sin asunto"}
-                      </p>
-                      <span className="text-xs text-gray-400 flex-shrink-0">
-                        {CATEGORY_LABELS[thread.category] ?? thread.category}
-                      </span>
-                    </div>
+                    <p className="text-xs text-stone-600">{f.description}</p>
                   </div>
-
-                  {/* Unread badge */}
-                  {isUnread && (
-                    <span className="w-5 h-5 rounded-full bg-[#D4622B] text-white text-xs flex items-center justify-center flex-shrink-0 font-medium">
-                      {thread.unread_count > 9 ? "9+" : thread.unread_count}
-                    </span>
-                  )}
-                </Link>
+                </li>
               );
             })}
-          </div>
-        )}
+          </ul>
+        </div>
+
+        {/* Footer note */}
+        <p className="mt-6 text-xs text-stone-500 text-center">
+          Mientras tanto, las notificaciones esenciales se envían por email (Resend) y push (PWA).
+        </p>
       </div>
     </div>
   );
