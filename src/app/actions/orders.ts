@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { addDays, format, parseISO } from "date-fns";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { requireAdmin, AuthError } from "@/lib/auth/require-user";
 import { transitionOrder } from "@/lib/orders/state-machine";
@@ -9,6 +10,7 @@ import { isWithinCutoff } from "@/lib/orders/cutoff";
 import { createOrderEvent } from "@/lib/orders/events";
 import { registerMovement } from "@/lib/inventory/movements";
 import { sendWhatsAppMessage } from "@/lib/whatsapp/send-message";
+import { createOrderFormToken } from "@/app/actions/order-form-tokens";
 import type { OrderStatus } from "@/lib/types/database";
 
 export type ActionResult<T = void> =
@@ -784,5 +786,122 @@ export async function markProductionComplete(
     return fail(`Producción completada con advertencias: ${issues.slice(0, 3).join(" | ")}`);
   }
   return ok({ consumed: newCount ?? 0 });
+}
+
+// ============================================================================
+// getOrgsAndMenusForModal — datos para el modal de crear pedido manual (E.7)
+// ============================================================================
+
+export async function getOrgsAndMenusForModal(): Promise<
+  ActionResult<{
+    orgs: { id: string; name: string }[];
+    menus: { id: string; week_label: string; week_start: string }[];
+  }>
+> {
+  const auth = await handleAuth();
+  if (!auth.ok) return auth;
+
+  const supabase = await createSupabaseAdmin();
+
+  const [{ data: orgs }, { data: menus }] = await Promise.all([
+    supabase
+      .from("organizations")
+      .select("id, name")
+      .eq("status", "active")
+      .order("name"),
+    supabase
+      .from("weekly_menus")
+      .select("id, week_start, week_end")
+      .eq("status", "published")
+      .order("week_start", { ascending: false })
+      .limit(10),
+  ]);
+
+  return ok({
+    orgs: (orgs ?? []) as { id: string; name: string }[],
+    menus: (menus ?? []).map((m) => ({
+      id: m.id,
+      week_label: `${format(parseISO(m.week_start), "d/M")} al ${format(parseISO(m.week_end), "d/M")}`,
+      week_start: m.week_start,
+    })),
+  });
+}
+
+// ============================================================================
+// createManualOrder — crea pedido + token desde el dashboard admin (E.7)
+// ============================================================================
+
+const createManualOrderSchema = z.object({
+  organizationId: z.string().uuid(),
+  menuId: z.string().uuid(),
+  sectionNames: z.array(z.string().trim().min(1).max(100)).min(1).max(20),
+});
+
+export async function createManualOrder(
+  input: z.input<typeof createManualOrderSchema>
+): Promise<ActionResult<{ orderId: string; token: string }>> {
+  const auth = await handleAuth();
+  if (!auth.ok) return auth;
+  if (!["superadmin", "admin"].includes(auth.user.role)) {
+    return fail("Se requiere rol de administrador");
+  }
+
+  const parsed = createManualOrderSchema.safeParse(input);
+  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Datos inválidos");
+  const { organizationId, menuId, sectionNames } = parsed.data;
+
+  const supabase = await createSupabaseAdmin();
+
+  const [{ data: org }, { data: menu }] = await Promise.all([
+    supabase.from("organizations").select("id, status").eq("id", organizationId).single(),
+    supabase
+      .from("weekly_menus")
+      .select("id, week_start, week_end, status")
+      .eq("id", menuId)
+      .single(),
+  ]);
+
+  if (!org) return fail("Organización no encontrada");
+  if ((org as { status: string }).status !== "active") return fail("La organización no está activa");
+  if (!menu) return fail("Menú no encontrado");
+  if ((menu as { status: string }).status !== "published") return fail("El menú debe estar publicado");
+
+  const m = menu as { week_start: string; week_end: string };
+  const weekLabel = `${format(parseISO(m.week_start), "d/M")} al ${format(parseISO(m.week_end), "d/M")}`;
+
+  const { data: order, error: orderError } = await supabase
+    .from("orders")
+    .insert({
+      organization_id: organizationId,
+      menu_id: menuId,
+      week_label: weekLabel,
+      status: "draft",
+      source: "web_form",
+      total_units: 0,
+      total_amount: 0,
+    })
+    .select("id")
+    .single();
+
+  if (orderError || !order) return fail("Error al crear el pedido");
+
+  const tokenResult = await createOrderFormToken({
+    organizationId,
+    menuId,
+    orderId: order.id,
+    validUntil: addDays(new Date(), 7),
+    sectionNames,
+  });
+
+  if (!tokenResult.ok) {
+    await supabase.from("orders").delete().eq("id", order.id);
+    return fail(tokenResult.error);
+  }
+
+  revalidatePath("/pedidos");
+  return ok({
+    orderId: order.id,
+    token: (tokenResult.data as unknown as { token: string }).token,
+  });
 }
 

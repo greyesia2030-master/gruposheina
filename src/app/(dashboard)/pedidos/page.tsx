@@ -9,6 +9,7 @@ import { requireUser } from "@/lib/auth/require-user";
 import { canViewSalePrice } from "@/lib/permissions";
 import { QuickActionButton } from "./quick-action-button";
 import { ClickableRow } from "./clickable-row";
+import { NewOrderButton } from "./new-order-button";
 import type { OrderStatus, PaymentStatus } from "@/lib/types/database";
 import { MessageSquare, Globe, Phone } from "lucide-react";
 import { formatART } from "@/lib/utils/timezone";
@@ -82,7 +83,7 @@ export default async function PedidosPage({
 
   return (
     <div>
-      <PageHeader title="Pedidos" />
+      <PageHeader title="Pedidos" action={<NewOrderButton />} />
 
       {/* Tabs de estado */}
       <div className="mb-4 flex gap-1 overflow-x-auto border-b border-border">
