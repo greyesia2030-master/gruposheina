@@ -5,8 +5,9 @@ import { Card } from "@/components/ui/card";
 import { OrderStatusBadge } from "@/components/ui/badge";
 import { formatART } from "@/lib/utils/timezone";
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Users } from "lucide-react";
 import type { OrderStatus } from "@/lib/types/database";
+import { CloseOrderButton } from "@/components/portal-cliente/close-order-button";
 
 const DAY_NAMES: Record<number, string> = {
   1: "Lunes", 2: "Martes", 3: "Miércoles", 4: "Jueves", 5: "Viernes",
@@ -80,6 +81,19 @@ export default async function MiPortalPedidoDetailPage({
             </p>
           </div>
         </Card>
+      </div>
+
+      <div className="flex items-center justify-between mb-6">
+        <Link
+          href={`/mi-portal/pedidos/${id}/participantes`}
+          className="flex items-center gap-1.5 text-sm text-stone-500 hover:text-stone-800 transition-colors"
+        >
+          <Users className="h-4 w-4" />
+          Ver participantes
+        </Link>
+        {["draft", "partially_filled"].includes(order.status) && (
+          <CloseOrderButton orderId={order.id} />
+        )}
       </div>
 
       {lines && lines.length > 0 ? (

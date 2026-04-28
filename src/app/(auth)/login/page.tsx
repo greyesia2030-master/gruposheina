@@ -35,7 +35,7 @@ export default function LoginPage() {
       return;
     }
 
-    router.refresh(); // middleware resolves role-based redirect
+    router.push("/"); // middleware intercepts and redirects by role
   }
 
   return (
