@@ -27,6 +27,7 @@ export async function clientAdminCloseOrder(
   if (user.role !== "client_admin") return { ok: false, error: "Se requiere rol de administrador de cliente" };
 
   const supabase = await createSupabaseServer();
+  const db = await createAdminClient();
 
   const { data: order } = await supabase
     .from("orders")
@@ -42,7 +43,7 @@ export async function clientAdminCloseOrder(
     return { ok: false, error: "El pedido no puede cerrarse en su estado actual" };
   }
 
-  const { error: updateError } = await supabase
+  const { error: updateError } = await db
     .from("orders")
     .update({ status: "awaiting_confirmation" })
     .eq("id", orderId);

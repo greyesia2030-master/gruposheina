@@ -24,6 +24,7 @@ const TRANSITIONS: Transition[] = [
   { from: 'partially_filled',       to: 'cancelled' },
   { from: 'confirmed',              to: 'cancelled', requiresCutoff: true },
   { from: 'in_production',          to: 'cancelled', requiredRoles: ['superadmin', 'admin'] },
+  { from: 'partially_filled',       to: 'awaiting_confirmation' },
   { from: 'awaiting_confirmation',  to: 'draft',    requiredRoles: ['superadmin', 'admin'] },
 ];
 
