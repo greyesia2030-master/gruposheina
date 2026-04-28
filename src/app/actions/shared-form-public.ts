@@ -296,6 +296,29 @@ export async function joinSection(
     }
   }
 
+  // (b) Implicit auth: users with admin/client_admin role are always authorized
+  if (!isAuthorized && contact && contactType === "email") {
+    const { data: userRow } = await db
+      .from("users")
+      .select("role, organization_id")
+      .eq("email", contact.toLowerCase())
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (userRow) {
+      const role = (userRow as { role: string; organization_id: string | null }).role;
+      const userOrgId = (userRow as { role: string; organization_id: string | null }).organization_id;
+      if (role === "superadmin" || role === "admin") {
+        isAuthorized = true;
+      } else if (
+        (role === "client_admin" || role === "client_user") &&
+        userOrgId === formToken.organization_id
+      ) {
+        isAuthorized = true;
+      }
+    }
+  }
+
   // Check for existing placeholder (email-based, submitted_at IS NULL)
   if (contact && contactType === "email") {
     const { data: existing } = await db

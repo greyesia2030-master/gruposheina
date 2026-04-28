@@ -89,10 +89,10 @@ export function ParticipantesClient({
     if (p.is_authorized === false)
       return (
         <span
-          className="text-xs px-2 py-0.5 bg-red-100 text-red-700 rounded-full cursor-help"
-          title={`${p.member_contact} — No está en la lista del cliente`}
+          className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full cursor-help"
+          title={`${p.member_contact} — El email no está en la whitelist autorizada de este sector. Verificá si corresponde.`}
         >
-          🔴 No autorizado
+          Fuera de whitelist
         </span>
       );
     return (

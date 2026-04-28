@@ -430,10 +430,10 @@ export async function submitOwnOrderAsClientAdmin(input: {
 
   if (existing) {
     participantId = existing.id;
-    // Reset submitted_at so we can re-submit
+    // Reset submitted_at so we can re-submit; always mark as authorized (in-portal load by auth user)
     await db
       .from("order_participants")
-      .update({ submitted_at: null, last_activity_at: new Date().toISOString() })
+      .update({ submitted_at: null, last_activity_at: new Date().toISOString(), is_authorized: true })
       .eq("id", participantId);
   } else {
     const { data: newParticipant, error: insertErr } = await db
