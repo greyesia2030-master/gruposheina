@@ -686,3 +686,39 @@ export async function applyAdminOverride(
 
   return ok({ delta, newLineId: inserted.id });
 }
+
+// ============================================================================
+// setOrderCutoff — sobreescribe el corte de un pedido específico (E.2)
+// SQL migration required: ALTER TABLE orders ADD COLUMN custom_cutoff_at TIMESTAMPTZ;
+// ============================================================================
+
+const cutoffSchema = z.object({
+  orderId:  z.string().uuid(),
+  cutoffAt: z.string().datetime({ offset: true }),
+});
+
+export async function setOrderCutoff(
+  input: z.input<typeof cutoffSchema>
+): Promise<ActionResult> {
+  const auth = await handleAuth();
+  if (!auth.ok) return auth;
+  if (!["superadmin", "admin"].includes(auth.user.role)) {
+    return fail("Se requiere rol de administrador");
+  }
+
+  const parsed = cutoffSchema.safeParse(input);
+  if (!parsed.success) return fail(parsed.error.issues[0].message);
+  const { orderId, cutoffAt } = parsed.data;
+
+  const supabase = await createSupabaseAdmin();
+  const { error } = await supabase
+    .from("orders")
+    .update({ custom_cutoff_at: cutoffAt } as Record<string, unknown>)
+    .eq("id", orderId);
+
+  if (error) return fail(error.message);
+
+  revalidatePath("/pedidos");
+  revalidatePath(`/pedidos/${orderId}`);
+  return ok(undefined);
+}

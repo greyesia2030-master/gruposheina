@@ -4,6 +4,8 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin-client";
 import { sendCommunication } from "@/app/actions/communications";
 import { sendPushToOrderParticipants } from "@/app/actions/push";
+import { getCutoffDateTime } from "@/lib/time";
+import { subDays } from "date-fns";
 import type { MenuItem, OrderParticipant, OrderSection, OrderFormToken } from "@/lib/types/database";
 import type { OrderParticipantWithLines } from "@/lib/types/order-participant";
 
@@ -33,6 +35,7 @@ export async function getSharedFormData(token: string): Promise<
     items: MenuItem[];
     requireContact: boolean;
     users: FormUser[];
+    cutoffAt: string | null;
   }>
 > {
   const db = createAdminClient();
@@ -65,7 +68,7 @@ export async function getSharedFormData(token: string): Promise<
     return { ok: false, error: "invalid" };
   }
 
-  const [sectionsRes, itemsRes, usersRes] = await Promise.all([
+  const [sectionsRes, itemsRes, usersRes, orgRes, menuRes, orderRes] = await Promise.all([
     db
       .from("order_sections")
       .select("id, name, display_order")
@@ -84,11 +87,38 @@ export async function getSharedFormData(token: string): Promise<
       .eq("organization_id", tokenRow.organization_id)
       .eq("is_active", true)
       .order("full_name", { ascending: true }),
+    db
+      .from("organizations")
+      .select("cutoff_time, cutoff_days_before, timezone")
+      .eq("id", tokenRow.organization_id)
+      .maybeSingle(),
+    db
+      .from("weekly_menus")
+      .select("week_start")
+      .eq("id", tokenRow.menu_id)
+      .maybeSingle(),
+    db
+      .from("orders")
+      .select("custom_cutoff_at")
+      .eq("id", tokenRow.order_id)
+      .maybeSingle(),
   ]);
 
   const sections = sectionsRes.data ?? [];
   const items = itemsRes.data ?? [];
   const users = (usersRes.data ?? []) as FormUser[];
+
+  // Compute cutoff — prefer custom, fallback to org formula
+  let cutoffAt: string | null = null;
+  const customCutoff = (orderRes.data as unknown as { custom_cutoff_at?: string | null } | null)?.custom_cutoff_at ?? null;
+  if (customCutoff) {
+    cutoffAt = customCutoff;
+  } else if (orgRes.data && menuRes.data) {
+    const org = orgRes.data as { cutoff_time: string; cutoff_days_before: number; timezone: string };
+    const base = new Date(menuRes.data.week_start + "T12:00:00Z");
+    const shifted = subDays(base, org.cutoff_days_before);
+    cutoffAt = getCutoffDateTime(shifted, org.timezone, org.cutoff_time).toISOString();
+  }
 
   console.log(
     `[${ts()}] getSharedFormData: ok — order ${tokenRow.order_id.slice(0, 8)}, ` +
@@ -105,6 +135,7 @@ export async function getSharedFormData(token: string): Promise<
       items: items as unknown as MenuItem[],
       requireContact: (tokenRow as unknown as { require_contact?: boolean }).require_contact ?? true,
       users,
+      cutoffAt,
     },
   };
 }

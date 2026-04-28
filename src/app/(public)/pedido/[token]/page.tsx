@@ -39,6 +39,8 @@ export default function SharedOrderPage({ params }: { params: Promise<{ token: s
   const [sections, setSections] = useState<{ id: string; name: string }[]>([]);
   const [users, setUsers] = useState<FormUser[]>([]);
   const [requireContact, setRequireContact] = useState(true);
+  const [cutoffAt, setCutoffAt] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState("");
 
   const [selectedSectionId, setSelectedSectionId] = useState("");
   const [selectedUser, setSelectedUser] = useState<FormUser | null>(null);
@@ -57,6 +59,7 @@ export default function SharedOrderPage({ params }: { params: Promise<{ token: s
           setSections(result.data.sectionNames);
           setRequireContact(result.data.requireContact);
           setUsers(result.data.users);
+          setCutoffAt(result.data.cutoffAt);
           setFormMode(result.data.users.length > 0 ? "picker" : "manual");
           setStatus("ready");
         }
@@ -67,6 +70,31 @@ export default function SharedOrderPage({ params }: { params: Promise<{ token: s
         setStatus("error");
       });
   }, [token]);
+
+  // Countdown timer — solo si el corte es dentro de las próximas 24h
+  useEffect(() => {
+    if (!cutoffAt) return;
+    const cutoffMs = new Date(cutoffAt).getTime();
+    const update = () => {
+      const remaining = cutoffMs - Date.now();
+      if (remaining <= 0) {
+        setCountdown("00:00:00");
+        return;
+      }
+      if (remaining > 24 * 60 * 60 * 1000) {
+        setCountdown("");
+        return;
+      }
+      const totalSec = Math.floor(remaining / 1000);
+      const hh = Math.floor(totalSec / 3600);
+      const mm = Math.floor((totalSec % 3600) / 60);
+      const ss = totalSec % 60;
+      setCountdown([hh, mm, ss].map((n) => String(n).padStart(2, "0")).join(":"));
+    };
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [cutoffAt]);
 
   const handleSubmit = async () => {
     const usingPicker = formMode === "picker" && selectedUser;
@@ -225,11 +253,29 @@ export default function SharedOrderPage({ params }: { params: Promise<{ token: s
         </>
       )}
 
+      {/* Countdown banner — solo si el corte es en <24h */}
+      {countdown && (
+        <div className={`mb-4 rounded-xl border px-4 py-3 text-sm flex items-center justify-between ${
+          countdown === "00:00:00"
+            ? "border-red-200 bg-red-50 text-red-800"
+            : "border-amber-200 bg-amber-50 text-amber-800"
+        }`}>
+          <span>
+            {countdown === "00:00:00"
+              ? "El tiempo para enviar tu pedido expiró"
+              : "Tiempo restante para enviar"}
+          </span>
+          {countdown !== "00:00:00" && (
+            <span className="font-mono font-semibold">{countdown}</span>
+          )}
+        </div>
+      )}
+
       <Button
         size="lg"
         className="w-full"
         onClick={handleSubmit}
-        disabled={!canSubmit}
+        disabled={!canSubmit || countdown === "00:00:00"}
         loading={submitting}
       >
         Empezar a cargar

@@ -8,6 +8,9 @@ import { canViewSalePrice } from "@/lib/permissions";
 import { DAY_NAMES } from "@/lib/types/orders";
 import { isWithinCutoff } from "@/lib/orders/cutoff";
 import { checkStockForOrder } from "@/app/actions/orders";
+import { getCutoffDateTime } from "@/lib/time";
+import { subDays } from "date-fns";
+import { CutoffEditor } from "./cutoff-editor";
 import { OrderActions } from "./order-actions";
 import { RetryInventoryButton } from "./retry-inventory-button";
 import { SendReminderButton } from "./send-reminder-button";
@@ -121,6 +124,15 @@ export default async function PedidoDetailPage({
       ? isWithinCutoff(order, menu, org)
       : true;
 
+  // Calcular datetime de corte para mostrar en la card
+  const customCutoff = (order as Record<string, unknown>).custom_cutoff_at as string | null ?? null;
+  let cutoffDatetime: string | null = customCutoff;
+  if (!cutoffDatetime && org && menu) {
+    const base = new Date(menu.week_start + "T12:00:00Z");
+    const shifted = subDays(base, org.cutoff_days_before);
+    cutoffDatetime = getCutoffDateTime(shifted, org.timezone, org.cutoff_time).toISOString();
+  }
+
   // Un pedido es editable si está en draft, o en confirmed y aún dentro del corte
   const editableStatuses: OrderStatus[] = ["draft", "confirmed"];
   const isEditable = editableStatuses.includes(order.status as OrderStatus);
@@ -203,7 +215,7 @@ export default async function PedidoDetailPage({
       />
 
       {/* Tarjetas de info */}
-      <div className={`mb-6 grid gap-3 sm:grid-cols-2 ${showFinancials ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
+      <div className={`mb-6 grid gap-3 sm:grid-cols-2 ${showFinancials ? "lg:grid-cols-6" : "lg:grid-cols-5"}`}>
         <Card>
           <div className="flex items-center gap-3 p-4">
             <Building2 className="h-5 w-5 shrink-0 text-text-secondary" />
@@ -243,6 +255,29 @@ export default async function PedidoDetailPage({
               <p className="text-xs text-text-secondary">
                 {formatART(order.created_at, "dd MMM HH:mm")}
               </p>
+            </div>
+          </div>
+        </Card>
+        <Card>
+          <div className="flex items-center gap-3 p-4">
+            <Clock className="h-5 w-5 shrink-0 text-amber-500" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-text-secondary">Corte</p>
+              {cutoffDatetime ? (
+                <p className={`text-sm font-medium truncate ${withinCutoff ? "text-green-700" : "text-amber-700"}`}>
+                  {formatART(cutoffDatetime, "dd MMM HH:mm")}
+                  {customCutoff && (
+                    <span className="ml-1 text-xs font-normal text-text-secondary">(personalizado)</span>
+                  )}
+                </p>
+              ) : (
+                <p className="text-sm text-text-secondary">No calculado</p>
+              )}
+              {isAdmin && (
+                <div className="mt-1">
+                  <CutoffEditor orderId={order.id} currentCutoffIso={customCutoff} />
+                </div>
+              )}
             </div>
           </div>
         </Card>

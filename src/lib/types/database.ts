@@ -137,6 +137,7 @@ export interface Order {
   // FoodSync v2 additions
   creation_mode: string | null;
   form_token_id: string | null;
+  custom_cutoff_at: string | null;
   created_at: string;
   updated_at: string;
 }
