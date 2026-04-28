@@ -296,6 +296,44 @@ export async function joinSection(
     }
   }
 
+  // Check for existing placeholder (email-based, submitted_at IS NULL)
+  if (contact && contactType === "email") {
+    const { data: existing } = await db
+      .from("order_participants")
+      .select("id")
+      .eq("section_id", sectionId)
+      .eq("member_contact", contact.toLowerCase())
+      .is("submitted_at", null)
+      .maybeSingle();
+
+    if (existing) {
+      const { data: occupied, error: occupyError } = await db
+        .from("order_participants")
+        .update({
+          display_name: resolvedDisplayName.trim(),
+          form_token_id: formToken.id,
+          first_seen_at: new Date().toISOString(),
+          last_activity_at: new Date().toISOString(),
+          is_authorized: isAuthorized,
+        })
+        .eq("id", existing.id)
+        .select("*")
+        .single();
+
+      if (occupyError || !occupied) {
+        return { ok: false, error: "Error al registrar participante" };
+      }
+
+      await db
+        .from("order_form_tokens")
+        .update({ used_count: formToken.used_count + 1 })
+        .eq("id", formToken.id);
+
+      console.log(`[${ts()}] joinSection: occupied placeholder ${existing.id.slice(0, 8)}, section ${sectionId.slice(0, 8)}`);
+      return { ok: true, data: occupied as unknown as OrderParticipant };
+    }
+  }
+
   // Create participant
   const { data: participant, error: insertError } = await db
     .from("order_participants")

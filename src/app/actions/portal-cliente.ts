@@ -6,6 +6,7 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin-client";
 import { requireUser } from "@/lib/auth/require-user";
 import { createOrderEvent } from "@/lib/orders/events";
+import { insertPlaceholders } from "@/lib/orders/placeholders";
 
 type ActionResult<T = void> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -196,14 +197,26 @@ export async function createOrderAsClientAdmin(input: {
       total_quantity: 0,
     }));
 
-    const { error: sectionsError } = await db
+    const { data: insertedSections, error: sectionsError } = await db
       .from("order_sections")
-      .insert(sectionInserts);
+      .insert(sectionInserts)
+      .select("id, client_department_id");
 
     if (sectionsError) {
       await db.from("orders").delete().eq("id", order.id);
       return { ok: false, error: sectionsError.message };
     }
+
+    // Pre-generate placeholder participants from authorized_emails (non-critical)
+    try {
+      await insertPlaceholders(
+        order.id,
+        (insertedSections ?? []).map((s) => ({
+          id: s.id,
+          client_department_id: (s as unknown as { client_department_id: string | null }).client_department_id ?? null,
+        }))
+      );
+    } catch { /* non-critical */ }
   }
 
   // Step 4: Create form token (14 days validity)

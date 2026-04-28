@@ -8,6 +8,7 @@ import { requireAdmin, AuthError } from "@/lib/auth/require-user";
 import { transitionOrder } from "@/lib/orders/state-machine";
 import { isWithinCutoff } from "@/lib/orders/cutoff";
 import { createOrderEvent } from "@/lib/orders/events";
+import { insertPlaceholders } from "@/lib/orders/placeholders";
 import { registerMovement } from "@/lib/inventory/movements";
 import { sendWhatsAppMessage } from "@/lib/whatsapp/send-message";
 import { createOrderFormToken } from "@/app/actions/order-form-tokens";
@@ -905,14 +906,26 @@ export async function createManualOrder(
     total_quantity: 0,
   }));
 
-  const { error: sectionsError } = await supabase
+  const { data: insertedSections, error: sectionsError } = await supabase
     .from("order_sections")
-    .insert(sectionInserts);
+    .insert(sectionInserts)
+    .select("id, client_department_id");
 
   if (sectionsError) {
     await supabase.from("orders").delete().eq("id", order.id);
     return fail("Error al crear secciones");
   }
+
+  // Pre-generate placeholder participants from authorized_emails (non-critical)
+  try {
+    await insertPlaceholders(
+      order.id,
+      (insertedSections ?? []).map((s) => ({
+        id: s.id,
+        client_department_id: (s as unknown as { client_department_id: string | null }).client_department_id ?? null,
+      }))
+    );
+  } catch { /* non-critical */ }
 
   // INSERT form token (sections already created, skip sectionNames)
   const tokenResult = await createOrderFormToken({
