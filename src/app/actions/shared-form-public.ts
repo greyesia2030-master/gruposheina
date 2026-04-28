@@ -6,8 +6,9 @@ import { sendCommunication } from "@/app/actions/communications";
 import { sendPushToOrderParticipants } from "@/app/actions/push";
 import { getCutoffDateTime } from "@/lib/time";
 import { subDays } from "date-fns";
-import type { MenuItem, OrderParticipant, OrderSection, OrderFormToken } from "@/lib/types/database";
+import type { MenuItem, OrderParticipant, OrderSection, OrderFormToken, OrderStatus } from "@/lib/types/database";
 import type { OrderParticipantWithLines } from "@/lib/types/order-participant";
+import { canAcceptLoads } from "@/lib/orders/invariants";
 
 type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -191,6 +192,15 @@ export async function joinSection(
   const tokenRes = await resolveFormToken(token);
   if (!tokenRes.ok) return tokenRes;
   const { formToken } = tokenRes.data;
+
+  // Invariant: verificar que el pedido acepte cargas
+  const { data: orderRow } = await db
+    .from("orders")
+    .select("status")
+    .eq("id", formToken.order_id!)
+    .maybeSingle();
+  const loadInv = canAcceptLoads((orderRow?.status ?? "cancelled") as OrderStatus);
+  if (!loadInv.ok) return { ok: false, error: loadInv.reason };
 
   // Verify sectionId belongs to this token's order
   const { data: section } = await db

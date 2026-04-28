@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
-import { transitionOrderStatus, returnOrderToClient } from "@/app/actions/orders";
-import { generateProductionTicketsForOrder } from "@/lib/production/actions/generate-tickets";
+import { transitionOrderStatus, returnOrderToClient, approveOrder, sendToProduction } from "@/app/actions/orders";
 import type { OrderStatus } from "@/lib/types/database";
 import type { StockCheckResult } from "@/app/actions/orders";
 
@@ -24,7 +23,6 @@ const ACTIONS: Partial<Record<OrderStatus, ActionConfig[]>> = {
     { label: "Cancelar",            newStatus: "cancelled",     variant: "danger" },
   ],
   awaiting_confirmation: [
-    { label: "Confirmar pedido",    newStatus: "confirmed",     variant: "primary" },
     { label: "Cancelar",            newStatus: "cancelled",     variant: "danger" },
   ],
   partially_filled: [
@@ -55,6 +53,7 @@ export function OrderActions({ orderId, status, isWithinCutoff, stockCheck }: Or
   const [returningOrder, setReturningOrder]     = useState(false);
   const [showSendToProductionDialog, setShowSendToProductionDialog] = useState(false);
   const [sendingToProduction, setSendingToProduction] = useState(false);
+  const [approvingOrder, setApprovingOrder] = useState(false);
   const router  = useRouter();
   const { toast } = useToast();
 
@@ -108,22 +107,29 @@ export function OrderActions({ orderId, status, isWithinCutoff, stockCheck }: Or
     router.refresh();
   }
 
+  async function handleApproveOrder() {
+    setApprovingOrder(true);
+    const result = await approveOrder(orderId);
+    setApprovingOrder(false);
+    if (!result.ok) {
+      toast(result.error, "error");
+      return;
+    }
+    toast("Pedido confirmado", "success");
+    router.refresh();
+  }
+
   async function handleSendToProduction() {
     setSendingToProduction(true);
-    const result = await generateProductionTicketsForOrder(orderId);
+    const result = await sendToProduction(orderId);
     setSendingToProduction(false);
     setShowSendToProductionDialog(false);
     if (!result.ok) {
       toast(result.error, "error");
       return;
     }
-    const count = result.data.alreadyExisted
-      ? result.data.count
-      : result.data.count;
-    const msg = result.data.alreadyExisted
-      ? `Pedido ya tenía ${count} ticket(s) de producción generados.`
-      : `Pedido enviado a producción. ${count} ticket(s) generados.`;
-    toast(msg, "success");
+    const count = result.data.ticketsCreated;
+    toast(`${count} ticket(s) de producción generados. Cocina ya puede empezar.`, "success");
     router.refresh();
   }
 
@@ -151,6 +157,17 @@ export function OrderActions({ orderId, status, isWithinCutoff, stockCheck }: Or
             onClick={() => setShowSendToProductionDialog(true)}
           >
             Enviar a producción
+          </Button>
+        )}
+        {status === "awaiting_confirmation" && (
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={loading !== null || approvingOrder}
+            loading={approvingOrder}
+            onClick={handleApproveOrder}
+          >
+            Confirmar pedido
           </Button>
         )}
         {status === "awaiting_confirmation" && (

@@ -9,6 +9,13 @@ import { transitionOrder } from "@/lib/orders/state-machine";
 import { isWithinCutoff } from "@/lib/orders/cutoff";
 import { createOrderEvent } from "@/lib/orders/events";
 import { insertPlaceholders } from "@/lib/orders/placeholders";
+import {
+  canBeApprovedBySheina,
+  canBeSentToProduction,
+  canBeOverriddenByAdmin,
+  canBeReturnedBySheina,
+} from "@/lib/orders/invariants";
+import { generateProductionTicketsForOrder } from "@/lib/production/actions/generate-tickets";
 import { registerMovement } from "@/lib/inventory/movements";
 import { sendWhatsAppMessage } from "@/lib/whatsapp/send-message";
 import { createOrderFormToken } from "@/app/actions/order-form-tokens";
@@ -626,9 +633,8 @@ export async function applyAdminOverride(
     .eq("id", orderId)
     .single();
   if (!order) return fail("Pedido no encontrado");
-  if (["delivered", "cancelled"].includes(order.status)) {
-    return fail("No se puede modificar un pedido entregado o cancelado");
-  }
+  const overrideInv = canBeOverriddenByAdmin(order.status as OrderStatus);
+  if (!overrideInv.ok) return fail(overrideInv.reason);
 
   const { data: existingLines } = await supabase
     .from("order_lines")
@@ -970,18 +976,18 @@ export async function returnOrderToClient(input: {
 
   const { data: order } = await supabase
     .from("orders")
-    .select("id, status")
+    .select("id, status, form_token_id")
     .eq("id", input.orderId)
     .maybeSingle();
 
   if (!order) return fail("Pedido no encontrado");
-  if (order.status !== "awaiting_confirmation") {
-    return fail("El pedido debe estar en espera de confirmación para poder devolverlo");
-  }
+
+  const returnInv = canBeReturnedBySheina(order.status as OrderStatus);
+  if (!returnInv.ok) return fail(returnInv.reason);
 
   const { error: updateError } = await supabase
     .from("orders")
-    .update({ status: "draft" })
+    .update({ status: "draft", confirmed_at: null, confirmed_by: null })
     .eq("id", input.orderId);
 
   if (updateError) return fail(updateError.message);
@@ -991,6 +997,12 @@ export async function returnOrderToClient(input: {
     .from("order_sections")
     .update({ closed_at: null, closed_by_participant_id: null })
     .eq("order_id", input.orderId);
+
+  // Reactivar el form_token para que el equipo pueda volver a cargar
+  const tokenId = (order as { form_token_id: string | null }).form_token_id;
+  if (tokenId) {
+    await supabase.from("order_form_tokens").update({ is_active: true }).eq("id", tokenId);
+  }
 
   await createOrderEvent({
     orderId: input.orderId,
@@ -1004,5 +1016,67 @@ export async function returnOrderToClient(input: {
   revalidatePath("/pedidos");
   revalidatePath(`/mi-portal/pedidos/${input.orderId}`);
   return ok(undefined);
+}
+
+// ============================================================================
+// approveOrder — aprueba pedido awaiting_confirmation → confirmed (Sheina)
+// ============================================================================
+
+export async function approveOrder(orderId: string): Promise<ActionResult> {
+  const auth = await handleAuth();
+  if (!auth.ok) return auth;
+
+  const supabase = await createSupabaseAdmin();
+
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, status")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (!order) return fail("Pedido no encontrado");
+
+  const inv = canBeApprovedBySheina(order.status as OrderStatus);
+  if (!inv.ok) return fail(inv.reason);
+
+  try {
+    await transitionOrder(orderId, "confirmed", auth.user.id, "admin", undefined);
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : "Error al aprobar pedido");
+  }
+
+  revalidatePath(`/pedidos/${orderId}`);
+  revalidatePath("/pedidos");
+  revalidatePath(`/mi-portal/pedidos/${orderId}`);
+  return ok(undefined);
+}
+
+// ============================================================================
+// sendToProduction — genera tickets y cambia a in_production (Sheina)
+// ============================================================================
+
+export async function sendToProduction(
+  orderId: string
+): Promise<ActionResult<{ ticketsCreated: number }>> {
+  const auth = await handleAuth();
+  if (!auth.ok) return auth;
+
+  const supabase = await createSupabaseAdmin();
+
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, status")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (!order) return fail("Pedido no encontrado");
+
+  const inv = canBeSentToProduction(order.status as OrderStatus);
+  if (!inv.ok) return fail(inv.reason);
+
+  const result = await generateProductionTicketsForOrder(orderId);
+  if (!result.ok) return fail(result.error);
+
+  return ok({ ticketsCreated: result.data.count });
 }
 

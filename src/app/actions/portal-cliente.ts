@@ -2,12 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { format, parseISO, addDays } from "date-fns";
-import { createSupabaseServer } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin-client";
 import { requireUser } from "@/lib/auth/require-user";
 import { createOrderEvent } from "@/lib/orders/events";
 import { insertPlaceholders } from "@/lib/orders/placeholders";
 import { closeOrderSectionFromPublicForm } from "@/app/actions/shared-form-public";
+import { canBeClosedByClient, canAcceptLoads } from "@/lib/orders/invariants";
+import type { OrderStatus } from "@/lib/types/database";
 
 type ActionResult<T = void> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -23,25 +24,29 @@ export async function clientAdminCloseOrder(
     return { ok: false, error: "No autenticado" };
   }
 
-  if (!user.organizationId) return { ok: false, error: "Sin organización asignada" };
-  if (user.role !== "client_admin") return { ok: false, error: "Se requiere rol de administrador de cliente" };
+  const allowedRoles = ["client_admin", "superadmin", "admin"];
+  if (!allowedRoles.includes(user.role)) {
+    return { ok: false, error: "No autorizado" };
+  }
+  if (user.role === "client_admin" && !user.organizationId) {
+    return { ok: false, error: "Sin organización asignada" };
+  }
 
-  const supabase = await createSupabaseServer();
   const db = await createAdminClient();
 
-  const { data: order } = await supabase
+  const { data: order } = await db
     .from("orders")
-    .select("id, status, organization_id")
+    .select("id, status, organization_id, form_token_id")
     .eq("id", orderId)
-    .eq("organization_id", user.organizationId)
-    .single();
+    .maybeSingle();
 
   if (!order) return { ok: false, error: "Pedido no encontrado" };
-
-  const closeable = ["draft", "partially_filled"];
-  if (!closeable.includes(order.status)) {
-    return { ok: false, error: "El pedido no puede cerrarse en su estado actual" };
+  if (user.role === "client_admin" && (order as { organization_id: string }).organization_id !== user.organizationId) {
+    return { ok: false, error: "No autorizado" };
   }
+
+  const closeInv = canBeClosedByClient(order.status as OrderStatus);
+  if (!closeInv.ok) return { ok: false, error: closeInv.reason };
 
   // 1. Cerrar todas las secciones abiertas
   const now = new Date().toISOString();
@@ -60,13 +65,22 @@ export async function clientAdminCloseOrder(
 
   if (updateError) return { ok: false, error: updateError.message };
 
+  // 3. Invalidar el form_token para bloquear cargas del link público
+  const tokenId = (order as { form_token_id: string | null }).form_token_id;
+  if (tokenId) {
+    await db
+      .from("order_form_tokens")
+      .update({ is_active: false })
+      .eq("id", tokenId);
+  }
+
   try {
     await createOrderEvent({
       orderId,
       eventType: "confirmed",
       actorId: user.id,
       actorRole: "client",
-      payload: { action: "closed_by_client_admin", sections_closed: "all", newStatus: "awaiting_confirmation" },
+      payload: { action: "closed_by_client_admin", sections_closed: "all", token_invalidated: !!tokenId },
     });
   } catch {
     /* non-critical — order already updated */
@@ -415,10 +429,8 @@ export async function submitOwnOrderAsClientAdmin(input: {
     return { ok: false, error: "Pedido no pertenece a tu organización" };
   }
 
-  const validStatuses = ["draft", "awaiting_confirmation", "partially_filled"];
-  if (!validStatuses.includes(order.status)) {
-    return { ok: false, error: "El pedido no permite carga en este estado" };
-  }
+  const loadInv = canAcceptLoads(order.status as OrderStatus);
+  if (!loadInv.ok) return { ok: false, error: loadInv.reason };
 
   // Validate section belongs to order
   const { data: section } = await db
