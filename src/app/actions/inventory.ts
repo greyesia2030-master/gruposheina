@@ -99,11 +99,14 @@ const MOVEMENT_TYPES = [
 ] as const satisfies readonly MovementType[];
 
 const registerMovementSchema = z.object({
-  itemId: z.string().uuid(),
+  itemId: z.string().uuid("Insumo no válido — seleccioná uno de la lista"),
   movementType: z.enum(MOVEMENT_TYPES),
   quantity: z.coerce.number().positive("La cantidad debe ser mayor a 0"),
   unitCost: z.coerce.number().min(0).optional(),
   reason: z.string().trim().max(300).optional(),
+  lotId: z.string().uuid().nullable().optional(),
+  siteId: z.string().uuid().nullable().optional(),
+  referenceId: z.string().uuid().nullable().optional(),
 });
 
 const deactivateItemSchema = z.object({
@@ -207,7 +210,10 @@ export async function registerMovement(
 
   const parsed = registerMovementSchema.safeParse(input);
   if (!parsed.success) {
-    return fail(parsed.error.issues[0]?.message ?? "Datos inválidos");
+    const msg = parsed.error.issues
+      .map((i) => i.message)
+      .join(", ");
+    return fail(msg || "Datos inválidos");
   }
   const data = parsed.data;
 

@@ -60,11 +60,19 @@ export function QuickMovementForm({ items, userRole }: QuickMovementFormProps) {
       return;
     }
     startTransition(async () => {
+      const trimmedItemId = itemId?.trim();
+      if (!trimmedItemId) {
+        toast("Seleccioná un insumo válido", "error");
+        return;
+      }
       const result = await registerMovement({
-        itemId,
+        itemId: trimmedItemId,
         movementType,
         quantity: qty,
         reason: reason.trim() || undefined,
+        lotId: null,
+        siteId: null,
+        referenceId: null,
       });
       if (result.ok) {
         toast("Movimiento registrado correctamente", "success");
