@@ -722,3 +722,67 @@ export async function setOrderCutoff(
   revalidatePath(`/pedidos/${orderId}`);
   return ok(undefined);
 }
+
+// ============================================================================
+// markProductionComplete — operador confirma producción y consume insumos (E.4/E.5)
+// ============================================================================
+
+export async function markProductionComplete(
+  orderId: string
+): Promise<ActionResult<{ consumed: number }>> {
+  const auth = await handleAuth();
+  if (!auth.ok) return auth;
+
+  const supabase = await createSupabaseAdmin();
+
+  const { data: order } = await supabase
+    .from("orders")
+    .select("status")
+    .eq("id", orderId)
+    .single();
+
+  if (!order) return fail("Pedido no encontrado");
+  if (order.status !== "in_production") {
+    return fail("Solo se pueden completar pedidos con estado 'en producción'");
+  }
+
+  const { count: existing } = await supabase
+    .from("inventory_movements")
+    .select("id", { count: "exact", head: true })
+    .eq("reference_id", orderId)
+    .eq("reference_type", "order");
+
+  if ((existing ?? 0) > 0) {
+    return fail(`Ya existen ${existing} movimientos de consumo para este pedido`);
+  }
+
+  const issues = await consumeInventoryForOrder(orderId, auth.user.id);
+
+  const { count: newCount } = await supabase
+    .from("inventory_movements")
+    .select("id", { count: "exact", head: true })
+    .eq("reference_id", orderId)
+    .eq("reference_type", "order");
+
+  await createOrderEvent({
+    orderId,
+    eventType: "override",
+    actorId: auth.user.id,
+    actorRole: "admin",
+    payload: {
+      action: "production_complete",
+      consumed_movements: newCount ?? 0,
+      issues: issues.length > 0 ? issues : undefined,
+    },
+  });
+
+  revalidatePath(`/pedidos/${orderId}`);
+  revalidatePath("/operador/produccion");
+  revalidatePath("/inventario");
+
+  if (issues.length > 0) {
+    return fail(`Producción completada con advertencias: ${issues.slice(0, 3).join(" | ")}`);
+  }
+  return ok({ consumed: newCount ?? 0 });
+}
+
