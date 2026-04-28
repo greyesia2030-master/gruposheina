@@ -3,9 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
-import { requireAdmin, AuthError } from "@/lib/auth/require-user";
+import { requireAdmin, requireUser, AuthError } from "@/lib/auth/require-user";
 import { INV_CATEGORY_LABELS } from "@/lib/types/inventory";
-import type { InvCategory, MovementType } from "@/lib/types/database";
+import type { InvCategory, MovementType, UserRole } from "@/lib/types/database";
 
 // ============================================================================
 // Result helpers
@@ -30,6 +30,31 @@ async function handleAuth(): Promise<
   try {
     const user = await requireAdmin();
     return { ok: true, user };
+  } catch (e) {
+    if (e instanceof AuthError) return fail(e.message);
+    return fail("Error de autenticación");
+  }
+}
+
+const MOVEMENT_ALLOWED_BY_ROLE: Partial<Record<UserRole, readonly MovementType[]>> = {
+  superadmin: ["purchase", "production_consumption", "waste", "adjustment_pos", "adjustment_neg", "return"],
+  admin:      ["purchase", "production_consumption", "waste", "adjustment_pos", "adjustment_neg", "return"],
+  operator:   ["purchase", "production_consumption", "waste", "adjustment_pos", "adjustment_neg", "return"],
+  warehouse:  ["purchase", "production_consumption", "waste", "adjustment_pos", "adjustment_neg", "return"],
+  kitchen:    ["production_consumption", "waste"],
+};
+
+async function handleMovementAuth(): Promise<
+  | { ok: true; user: Awaited<ReturnType<typeof requireUser>>; allowedTypes: readonly MovementType[] }
+  | { ok: false; error: string }
+> {
+  try {
+    const user = await requireUser();
+    const allowedTypes = MOVEMENT_ALLOWED_BY_ROLE[user.role];
+    if (!allowedTypes || allowedTypes.length === 0) {
+      return fail("Tu rol no permite registrar movimientos de inventario.");
+    }
+    return { ok: true, user, allowedTypes };
   } catch (e) {
     if (e instanceof AuthError) return fail(e.message);
     return fail("Error de autenticación");
@@ -177,7 +202,7 @@ export async function updateItem(
 export async function registerMovement(
   input: z.input<typeof registerMovementSchema>
 ): Promise<ActionResult> {
-  const auth = await handleAuth();
+  const auth = await handleMovementAuth();
   if (!auth.ok) return auth;
 
   const parsed = registerMovementSchema.safeParse(input);
@@ -185,6 +210,10 @@ export async function registerMovement(
     return fail(parsed.error.issues[0]?.message ?? "Datos inválidos");
   }
   const data = parsed.data;
+
+  if (!auth.allowedTypes.includes(data.movementType)) {
+    return fail(`Tu rol no permite el tipo de movimiento "${data.movementType}".`);
+  }
 
   const isAdjustment = data.movementType.startsWith("adjustment");
   if (isAdjustment && !data.reason?.trim()) {

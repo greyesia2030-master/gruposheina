@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { registerMovement } from "@/app/actions/inventory";
 import { useToast } from "@/components/ui/toast";
 import { Card } from "@/components/ui/card";
+import type { UserRole } from "@/lib/types/database";
 
 interface ItemOption {
   id: string;
@@ -11,15 +12,40 @@ interface ItemOption {
   unit: string;
 }
 
+type AllowedMovement = "purchase" | "adjustment_pos" | "adjustment_neg" | "production_consumption" | "waste" | "return";
+
+const ALL_MOVEMENT_OPTIONS: { value: AllowedMovement; label: string }[] = [
+  { value: "purchase",              label: "Compra / ingreso" },
+  { value: "adjustment_pos",        label: "Ajuste positivo" },
+  { value: "adjustment_neg",        label: "Ajuste negativo" },
+  { value: "production_consumption",label: "Consumo" },
+  { value: "waste",                 label: "Merma" },
+  { value: "return",                label: "Devolución" },
+];
+
+const MOVEMENT_OPTIONS_BY_ROLE: Partial<Record<UserRole, AllowedMovement[]>> = {
+  kitchen:    ["production_consumption", "waste"],
+  operator:   ["production_consumption", "waste", "purchase", "adjustment_pos", "adjustment_neg", "return"],
+  warehouse:  ["purchase", "adjustment_pos", "adjustment_neg", "production_consumption", "waste", "return"],
+  admin:      ["purchase", "adjustment_pos", "adjustment_neg", "production_consumption", "waste", "return"],
+  superadmin: ["purchase", "adjustment_pos", "adjustment_neg", "production_consumption", "waste", "return"],
+};
+
 interface QuickMovementFormProps {
   items: ItemOption[];
+  userRole: UserRole;
 }
 
-export function QuickMovementForm({ items }: QuickMovementFormProps) {
+export function QuickMovementForm({ items, userRole }: QuickMovementFormProps) {
   const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
   const [itemId, setItemId] = useState("");
-  const [movementType, setMovementType] = useState<"purchase" | "adjustment_pos" | "adjustment_neg">("purchase");
+
+  const allowedValues = MOVEMENT_OPTIONS_BY_ROLE[userRole] ?? ["production_consumption", "waste"];
+  const visibleOptions = ALL_MOVEMENT_OPTIONS.filter((o) => allowedValues.includes(o.value));
+  const defaultType = visibleOptions[0]?.value ?? "production_consumption";
+
+  const [movementType, setMovementType] = useState<AllowedMovement>(defaultType);
   const [quantity, setQuantity] = useState("");
   const [reason, setReason] = useState("");
 
@@ -74,12 +100,12 @@ export function QuickMovementForm({ items }: QuickMovementFormProps) {
           <label className="block text-xs font-medium text-stone-600 mb-1">Tipo de movimiento</label>
           <select
             value={movementType}
-            onChange={(e) => setMovementType(e.target.value as typeof movementType)}
+            onChange={(e) => setMovementType(e.target.value as AllowedMovement)}
             className="w-full border border-stone-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#D4622B]"
           >
-            <option value="purchase">Compra / ingreso</option>
-            <option value="adjustment_pos">Ajuste positivo</option>
-            <option value="adjustment_neg">Ajuste negativo</option>
+            {visibleOptions.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
           </select>
         </div>
 

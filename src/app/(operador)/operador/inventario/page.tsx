@@ -5,7 +5,7 @@ import { AlertTriangle } from "lucide-react";
 import { QuickMovementForm } from "./quick-movement-form";
 
 export default async function OperadorInventarioPage() {
-  await requireUser();
+  const currentUser = await requireUser();
   const supabase = await createSupabaseServer();
 
   const { data: items } = await supabase
@@ -45,7 +45,7 @@ export default async function OperadorInventarioPage() {
         <h2 className="text-sm font-semibold text-stone-500 uppercase tracking-wide mb-3">
           Registrar movimiento
         </h2>
-        <QuickMovementForm items={allItems.map((i) => ({ id: i.id, name: i.name, unit: i.unit }))} />
+        <QuickMovementForm items={allItems.map((i) => ({ id: i.id, name: i.name, unit: i.unit }))} userRole={currentUser.role} />
       </div>
 
       {/* Tabla de stock */}
