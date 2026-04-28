@@ -133,6 +133,7 @@ export async function duplicateMenu(
 
   // 1. Crear nuevo menú
   const start = new Date(parsed.data.weekStart + "T00:00:00");
+  if (getDay(start) !== 1) return fail("La fecha de inicio del menú debe ser un lunes");
   const end = addDays(start, 4);
   const weekNumber = getISOWeek(start);
 
@@ -162,7 +163,11 @@ export async function duplicateMenu(
 
   if (sourceItems && sourceItems.length > 0) {
     const { error: insertError } = await supabase.from("menu_items").insert(
-      sourceItems.map((item) => ({ ...item, menu_id: newMenu.id }))
+      sourceItems.map((item) => ({
+        ...item,
+        menu_id: newMenu.id,
+        recipe_version_id: item.recipe_version_id || null,
+      }))
     );
     if (insertError) {
       await supabase.from("weekly_menus").delete().eq("id", newMenu.id);

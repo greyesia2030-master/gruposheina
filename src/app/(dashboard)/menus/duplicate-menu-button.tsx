@@ -8,7 +8,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { duplicateMenu } from "@/app/actions/menus";
 import { Copy } from "lucide-react";
-import { addDays, getISOWeek } from "date-fns";
+import { addDays, getISOWeek, getDay } from "date-fns";
 
 interface DuplicateMenuButtonProps {
   sourceMenuId: string;
@@ -74,12 +74,21 @@ export function DuplicateMenuButton({ sourceMenuId, sourceWeekLabel }: Duplicate
                 : "Seleccioná el lunes de la semana destino"
             }
           />
+          {weekStart && getDay(new Date(weekStart + "T00:00:00")) !== 1 && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              La fecha debe ser un lunes. Seleccioná el lunes de la semana que querés crear.
+            </p>
+          )}
 
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setOpen(false)}>
               Cancelar
             </Button>
-            <Button loading={loading} disabled={!weekStart} onClick={handleDuplicate}>
+            <Button
+              loading={loading}
+              disabled={!weekStart || loading || (!!weekStart && getDay(new Date(weekStart + "T00:00:00")) !== 1)}
+              onClick={handleDuplicate}
+            >
               Duplicar menú
             </Button>
           </div>
