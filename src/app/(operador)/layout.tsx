@@ -1,6 +1,8 @@
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/require-user";
-import { createSupabaseServer } from "@/lib/supabase/server";
 import Link from "next/link";
 import { ChefHat, Package, LayoutDashboard } from "lucide-react";
 import { RoleGuard } from "@/components/auth/role-guard";
@@ -13,13 +15,6 @@ export default async function OperadorLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createSupabaseServer();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect("/login");
-
   let currentUser;
   try {
     currentUser = await requireUser();
