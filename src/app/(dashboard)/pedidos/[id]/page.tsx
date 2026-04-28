@@ -84,8 +84,8 @@ export default async function PedidoDetailPage({
 
   if (!order) notFound();
 
-  // Cargar líneas, eventos y conteo de movimientos de inventario en paralelo
-  const [linesResult, eventsResult, movementsResult] = await Promise.all([
+  // Cargar líneas, eventos, movimientos e tickets de producción en paralelo
+  const [linesResult, eventsResult, movementsResult, ticketsResult] = await Promise.all([
     supabase
       .from("order_lines")
       .select("*")
@@ -102,11 +102,20 @@ export default async function PedidoDetailPage({
       .select("id", { count: "exact", head: true })
       .eq("reference_id", id)
       .eq("reference_type", "order"),
+    supabase
+      .from("production_tickets")
+      .select(
+        "id, status, quantity_target, quantity_produced, quantity_wasted, production_date, menu_item:menu_items(display_name, day_of_week)"
+      )
+      .eq("order_id", id)
+      .order("production_date")
+      .order("status"),
   ]);
 
   const lines = linesResult.data ?? [];
   const events = eventsResult.data ?? [];
   const movementsCount = movementsResult.count ?? 0;
+  const productionTickets = ticketsResult.data ?? [];
 
   // Supabase many-to-one FK returns a single object, not an array
   const org = order.organization as {
@@ -332,6 +341,74 @@ export default async function PedidoDetailPage({
           </Card>
         )}
       </div>
+
+      {/* Tabla de producción */}
+      {productionTickets.length > 0 && (
+        <div className="mb-8">
+          <h2 className="mb-3 text-lg font-semibold">
+            Producción — {productionTickets.length} ticket{productionTickets.length !== 1 ? "s" : ""}
+          </h2>
+          <Card>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-stone-100 text-left text-stone-400">
+                    <th className="px-4 py-3 font-medium">Día</th>
+                    <th className="px-4 py-3 font-medium">Opción</th>
+                    <th className="px-4 py-3 font-medium text-right">Obj.</th>
+                    <th className="px-4 py-3 font-medium text-right">Prod.</th>
+                    <th className="px-4 py-3 font-medium text-right">Merma</th>
+                    <th className="px-4 py-3 font-medium">Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {productionTickets.map((t) => {
+                    const mi = t.menu_item as unknown as { display_name: string; day_of_week: number } | null;
+                    const statusColors: Record<string, string> = {
+                      pending: "text-amber-600",
+                      in_progress: "text-blue-600",
+                      ready: "text-green-600",
+                      cancelled: "text-stone-400",
+                      blocked: "text-red-600",
+                      paused: "text-stone-500",
+                    };
+                    const statusLabels: Record<string, string> = {
+                      pending: "Pendiente", in_progress: "En producción",
+                      ready: "Listo", cancelled: "Cancelado",
+                      blocked: "Bloqueado", paused: "Pausado",
+                    };
+                    const dayNames: Record<number, string> = {
+                      1: "Lun", 2: "Mar", 3: "Mié", 4: "Jue", 5: "Vie",
+                    };
+                    return (
+                      <tr key={t.id as string} className="border-b border-stone-50 last:border-0">
+                        <td className="px-4 py-3 text-stone-500">
+                          {dayNames[mi?.day_of_week ?? 0] ?? "—"}
+                        </td>
+                        <td className="px-4 py-3 text-stone-800 font-medium">
+                          {mi?.display_name ?? "—"}
+                        </td>
+                        <td className="px-4 py-3 text-right text-stone-600">
+                          {t.quantity_target as number}
+                        </td>
+                        <td className="px-4 py-3 text-right text-stone-600">
+                          {(t.quantity_produced as number) > 0 ? (t.quantity_produced as number) : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-right text-stone-600">
+                          {(t.quantity_wasted as number) > 0 ? (t.quantity_wasted as number) : "—"}
+                        </td>
+                        <td className={`px-4 py-3 font-medium ${statusColors[t.status as string] ?? ""}`}>
+                          {statusLabels[t.status as string] ?? t.status as string}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Timeline de eventos */}
       <div>

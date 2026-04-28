@@ -5,11 +5,15 @@ import { DashboardKPIs } from "@/components/dashboard/kpis";
 import { DashboardChartViandasPorDia } from "@/components/dashboard/chart-viandas-dia";
 import { DashboardChartEstados } from "@/components/dashboard/chart-estados";
 import { DashboardProximasEntregas } from "@/components/dashboard/proximas-entregas";
+import { WasteApprovalWidget } from "@/components/dashboard/waste-approval-widget";
+import { Card } from "@/components/ui/card";
+import Link from "next/link";
 
 export default async function DashboardPage() {
   const supabase = await createSupabaseServer();
+  const today = new Date().toISOString().slice(0, 10);
 
-  const [ordersRes, linesRes] = await Promise.all([
+  const [ordersRes, linesRes, ticketsRes, wastePendingRes] = await Promise.all([
     supabase
       .from("orders")
       .select(
@@ -19,10 +23,47 @@ export default async function DashboardPage() {
     supabase
       .from("order_lines")
       .select("quantity, menu_item:menu_items(day_of_week), order:orders(status)"),
+    supabase
+      .from("production_tickets")
+      .select("id, status, quantity_target, recipe_version:recipe_versions(cost_per_portion)")
+      .eq("production_date", today)
+      .not("status", "eq", "cancelled"),
+    supabase
+      .from("inventory_movements")
+      .select("id, item_id, quantity, reason, reference_id, item:inventory_items(name, unit)")
+      .eq("movement_type", "waste_pending")
+      .order("created_at", { ascending: false })
+      .limit(10),
   ]);
 
   const orders = ordersRes.data ?? [];
   const lines = linesRes.data ?? [];
+  const todayTickets = ticketsRes.data ?? [];
+  const wastePending = wastePendingRes.data ?? [];
+
+  // Production stats for today
+  const prodPending = todayTickets.filter((t) => t.status === "pending").length;
+  const prodInProgress = todayTickets.filter((t) => t.status === "in_progress").length;
+  const prodReady = todayTickets.filter((t) => t.status === "ready").length;
+  const prodBlocked = todayTickets.filter((t) => t.status === "blocked").length;
+  const prodCostToday = todayTickets.reduce((sum, t) => {
+    const rv = t.recipe_version as unknown as { cost_per_portion: number } | null;
+    const cost = (rv?.cost_per_portion ?? 0) * ((t.quantity_target as number) || 0);
+    return sum + cost;
+  }, 0);
+
+  // Waste approval items
+  const wasteItems = wastePending.map((w) => {
+    const item = w.item as unknown as { name: string; unit: string } | null;
+    return {
+      id: w.id as string,
+      item_name: item?.name ?? "—",
+      item_unit: item?.unit ?? "",
+      quantity: (w.quantity as number) || 0,
+      reason: w.reason as string | null,
+      ticket_id: w.reference_id as string | null,
+    };
+  });
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
   const INACTIVE = ["delivered", "cancelled"];
@@ -92,6 +133,61 @@ export default async function DashboardPage() {
         clientes={kpiClientesActivos}
         ticket={kpiTicketPromedio}
       />
+
+      {/* Producción hoy + mermas */}
+      {todayTickets.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card>
+            <div className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-stone-600 uppercase tracking-wide">
+                  Producción hoy
+                </h3>
+                <Link
+                  href="/operador/produccion"
+                  className="text-xs text-[#D4622B] hover:underline"
+                >
+                  Ver cola →
+                </Link>
+              </div>
+              <div className="grid grid-cols-4 gap-3 mb-4">
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-amber-600">{prodPending}</p>
+                  <p className="text-xs text-stone-400">Pendientes</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-blue-600">{prodInProgress}</p>
+                  <p className="text-xs text-stone-400">En prod.</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-green-600">{prodReady}</p>
+                  <p className="text-xs text-stone-400">Listos</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-red-600">{prodBlocked}</p>
+                  <p className="text-xs text-stone-400">Bloqueados</p>
+                </div>
+              </div>
+              {prodCostToday > 0 && (
+                <p className="text-xs text-stone-500 border-t border-stone-100 pt-3">
+                  Costo estimado del día: ${prodCostToday.toLocaleString("es-AR")}
+                </p>
+              )}
+            </div>
+          </Card>
+
+          {wasteItems.length > 0 && (
+            <Card>
+              <div className="p-5">
+                <h3 className="text-sm font-semibold text-stone-600 uppercase tracking-wide mb-4">
+                  Mermas pendientes ({wasteItems.length})
+                </h3>
+                <WasteApprovalWidget items={wasteItems} />
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <DashboardChartViandasPorDia data={chartViandas} />

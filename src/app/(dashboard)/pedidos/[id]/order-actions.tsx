@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { transitionOrderStatus, returnOrderToClient } from "@/app/actions/orders";
+import { generateProductionTicketsForOrder } from "@/lib/production/actions/generate-tickets";
 import type { OrderStatus } from "@/lib/types/database";
 import type { StockCheckResult } from "@/app/actions/orders";
 
@@ -31,7 +32,6 @@ const ACTIONS: Partial<Record<OrderStatus, ActionConfig[]>> = {
     { label: "Cancelar",            newStatus: "cancelled",     variant: "danger" },
   ],
   confirmed: [
-    { label: "A producción",        newStatus: "in_production", variant: "primary" },
     { label: "Cancelar",            newStatus: "cancelled",     variant: "danger", requiresCutoff: true },
   ],
   in_production: [
@@ -53,6 +53,8 @@ export function OrderActions({ orderId, status, isWithinCutoff, stockCheck }: Or
   const [showReturnDialog, setShowReturnDialog] = useState(false);
   const [returnReason, setReturnReason]         = useState("");
   const [returningOrder, setReturningOrder]     = useState(false);
+  const [showSendToProductionDialog, setShowSendToProductionDialog] = useState(false);
+  const [sendingToProduction, setSendingToProduction] = useState(false);
   const router  = useRouter();
   const { toast } = useToast();
 
@@ -106,6 +108,25 @@ export function OrderActions({ orderId, status, isWithinCutoff, stockCheck }: Or
     router.refresh();
   }
 
+  async function handleSendToProduction() {
+    setSendingToProduction(true);
+    const result = await generateProductionTicketsForOrder(orderId);
+    setSendingToProduction(false);
+    setShowSendToProductionDialog(false);
+    if (!result.ok) {
+      toast(result.error, "error");
+      return;
+    }
+    const count = result.data.alreadyExisted
+      ? result.data.count
+      : result.data.count;
+    const msg = result.data.alreadyExisted
+      ? `Pedido ya tenía ${count} ticket(s) de producción generados.`
+      : `Pedido enviado a producción. ${count} ticket(s) generados.`;
+    toast(msg, "success");
+    router.refresh();
+  }
+
   return (
     <>
       <div className="flex flex-wrap gap-2">
@@ -121,6 +142,17 @@ export function OrderActions({ orderId, status, isWithinCutoff, stockCheck }: Or
             {action.label}
           </Button>
         ))}
+        {status === "confirmed" && (
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={loading !== null || sendingToProduction}
+            loading={sendingToProduction}
+            onClick={() => setShowSendToProductionDialog(true)}
+          >
+            Enviar a producción
+          </Button>
+        )}
         {status === "awaiting_confirmation" && (
           <Button
             variant="secondary"
@@ -171,6 +203,39 @@ export function OrderActions({ orderId, status, isWithinCutoff, stockCheck }: Or
               onClick={handleReturnOrder}
             >
               Devolver
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Send to production dialog */}
+      <Dialog
+        open={showSendToProductionDialog}
+        onClose={() => setShowSendToProductionDialog(false)}
+        title="Enviar a producción"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary">
+            Se van a generar tickets de cocina para cada opción de menú × día del pedido.
+            El inventario <strong>no se descuenta todavía</strong> — eso ocurre cuando el
+            cocinero inicia cada ticket.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowSendToProductionDialog(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={sendingToProduction}
+              disabled={sendingToProduction}
+              onClick={handleSendToProduction}
+            >
+              Confirmar y enviar
             </Button>
           </div>
         </div>
