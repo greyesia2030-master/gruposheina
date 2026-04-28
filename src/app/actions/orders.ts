@@ -834,7 +834,7 @@ export async function getOrgsAndMenusForModal(): Promise<
 const createManualOrderSchema = z.object({
   organizationId: z.string().uuid(),
   menuId: z.string().uuid(),
-  sectionNames: z.array(z.string().trim().min(1).max(100)).min(1).max(20),
+  departmentIds: z.array(z.string().uuid()).min(1).max(20),
 });
 
 export async function createManualOrder(
@@ -848,7 +848,7 @@ export async function createManualOrder(
 
   const parsed = createManualOrderSchema.safeParse(input);
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Datos inválidos");
-  const { organizationId, menuId, sectionNames } = parsed.data;
+  const { organizationId, menuId, departmentIds } = parsed.data;
 
   const supabase = await createSupabaseAdmin();
 
@@ -865,6 +865,16 @@ export async function createManualOrder(
   if ((org as { status: string }).status !== "active") return fail("La organización no está activa");
   if (!menu) return fail("Menú no encontrado");
   if ((menu as { status: string }).status !== "published") return fail("El menú debe estar publicado");
+
+  // Fetch departments (validates they belong to the org)
+  const { data: depts } = await supabase
+    .from("client_departments")
+    .select("id, name, expected_participants")
+    .in("id", departmentIds)
+    .eq("organization_id", organizationId)
+    .order("name");
+
+  if (!depts || depts.length === 0) return fail("No se encontraron sectores para esta organización");
 
   const m = menu as { week_start: string; week_end: string };
   const weekLabel = `${format(parseISO(m.week_start), "d/M")} al ${format(parseISO(m.week_end), "d/M")}`;
@@ -885,23 +895,47 @@ export async function createManualOrder(
 
   if (orderError || !order) return fail("Error al crear el pedido");
 
+  // INSERT order_sections with client_department_id
+  const sectionInserts = (depts as unknown as { id: string; name: string; expected_participants: number | null }[]).map((d, i) => ({
+    order_id: order.id,
+    name: d.name,
+    display_order: i,
+    client_department_id: d.id,
+    expected_participants: d.expected_participants ?? 0,
+    total_quantity: 0,
+  }));
+
+  const { error: sectionsError } = await supabase
+    .from("order_sections")
+    .insert(sectionInserts);
+
+  if (sectionsError) {
+    await supabase.from("orders").delete().eq("id", order.id);
+    return fail("Error al crear secciones");
+  }
+
+  // INSERT form token (sections already created, skip sectionNames)
   const tokenResult = await createOrderFormToken({
     organizationId,
     menuId,
     orderId: order.id,
     validUntil: addDays(new Date(), 7),
-    sectionNames,
   });
 
   if (!tokenResult.ok) {
+    await supabase.from("order_sections").delete().eq("order_id", order.id);
     await supabase.from("orders").delete().eq("id", order.id);
     return fail(tokenResult.error);
   }
 
+  // Link token to order
+  const tokenData = tokenResult.data as unknown as { id: string; token: string };
+  await supabase.from("orders").update({ form_token_id: tokenData.id }).eq("id", order.id);
+
   revalidatePath("/pedidos");
   return ok({
     orderId: order.id,
-    token: (tokenResult.data as unknown as { token: string }).token,
+    token: tokenData.token,
   });
 }
 

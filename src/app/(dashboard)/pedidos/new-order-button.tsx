@@ -2,14 +2,16 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Copy, CheckCheck, ExternalLink } from "lucide-react";
+import { Plus, Copy, CheckCheck, ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { getOrgsAndMenusForModal, createManualOrder } from "@/app/actions/orders";
+import { getClientDepartments } from "@/app/actions/client-departments";
 
 type Org = { id: string; name: string };
 type Menu = { id: string; week_label: string; week_start: string };
+type Dept = { id: string; name: string; expected_participants: number };
 
 type Step = "form" | "result";
 
@@ -25,7 +27,8 @@ export function NewOrderButton() {
   const [menus, setMenus] = useState<Menu[]>([]);
   const [orgId, setOrgId] = useState("");
   const [menuId, setMenuId] = useState("");
-  const [sectionsRaw, setSectionsRaw] = useState("Todos");
+  const [departments, setDepartments] = useState<Dept[]>([]);
+  const [loadingDepts, setLoadingDepts] = useState(false);
   const [copied, setCopied] = useState(false);
   const [result, setResult] = useState<{ orderId: string; token: string } | null>(null);
 
@@ -39,7 +42,7 @@ export function NewOrderButton() {
     setResult(null);
     setOrgId("");
     setMenuId("");
-    setSectionsRaw("Todos");
+    setDepartments([]);
     setCopied(false);
     setIsLoading(true);
     getOrgsAndMenusForModal().then((res) => {
@@ -58,18 +61,32 @@ export function NewOrderButton() {
     setOpen(false);
   }
 
-  function handleSubmit() {
-    const sectionNames = sectionsRaw
-      .split(/[\n,]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
+  async function handleOrgChange(newOrgId: string) {
+    setOrgId(newOrgId);
+    setDepartments([]);
+    if (!newOrgId) return;
+    setLoadingDepts(true);
+    const res = await getClientDepartments(newOrgId);
+    setLoadingDepts(false);
+    if (res.ok) {
+      setDepartments(res.data as unknown as Dept[]);
+    }
+  }
 
+  function handleSubmit() {
     if (!orgId) { toast("Seleccioná una organización", "error"); return; }
     if (!menuId) { toast("Seleccioná un menú", "error"); return; }
-    if (sectionNames.length === 0) { toast("Ingresá al menos una sección", "error"); return; }
+    if (departments.length === 0) {
+      toast("Esta organización no tiene sectores configurados. Configuralos primero desde la ficha del cliente.", "error");
+      return;
+    }
 
     startTransition(async () => {
-      const res = await createManualOrder({ organizationId: orgId, menuId, sectionNames });
+      const res = await createManualOrder({
+        organizationId: orgId,
+        menuId,
+        departmentIds: departments.map((d) => d.id),
+      });
       if (!res.ok) {
         toast(res.error, "error");
         return;
@@ -109,7 +126,7 @@ export function NewOrderButton() {
               </label>
               <select
                 value={orgId}
-                onChange={(e) => setOrgId(e.target.value)}
+                onChange={(e) => handleOrgChange(e.target.value)}
                 className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-primary focus:outline-none"
               >
                 <option value="">Seleccioná una organización…</option>
@@ -152,25 +169,45 @@ export function NewOrderButton() {
               )}
             </div>
 
-            {/* Secciones */}
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-text">
-                Secciones <span className="font-normal text-text-secondary">(separar por coma o línea)</span>
-              </label>
-              <textarea
-                value={sectionsRaw}
-                onChange={(e) => setSectionsRaw(e.target.value)}
-                rows={3}
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:border-primary focus:outline-none resize-none"
-                placeholder="Todos, Administración, Ventas…"
-              />
-            </div>
+            {/* Secciones (auto-cargadas desde client_departments) */}
+            {orgId && (
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-text">
+                  Sectores
+                </label>
+                {loadingDepts ? (
+                  <div className="flex items-center gap-2 text-sm text-text-secondary py-1">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Cargando sectores…
+                  </div>
+                ) : departments.length === 0 ? (
+                  <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    Esta organización no tiene sectores configurados. Configuralos primero desde la ficha del cliente.
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {departments.map((d) => (
+                      <span
+                        key={d.id}
+                        className="rounded-full bg-surface-hover border border-border px-3 py-1 text-xs font-medium text-text"
+                      >
+                        {d.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="ghost" size="sm" onClick={handleClose} disabled={isPending}>
                 Cancelar
               </Button>
-              <Button size="sm" onClick={handleSubmit} disabled={isPending || menus.length === 0}>
+              <Button
+                size="sm"
+                onClick={handleSubmit}
+                disabled={isPending || menus.length === 0 || departments.length === 0 || loadingDepts}
+              >
                 {isPending ? "Creando…" : "Crear pedido"}
               </Button>
             </div>
