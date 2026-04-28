@@ -116,7 +116,7 @@ export async function generateProductionTicketsForOrder(
     quantity_produced: 0,
     quantity_wasted: 0,
     status: "pending" as const,
-    priority: 100,
+    priority: 5,
   }));
 
   const { data: inserted, error: insertError } = await supabase
