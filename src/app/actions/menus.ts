@@ -291,3 +291,55 @@ export async function deleteMenuItem(
   if (error) return fail("Error al eliminar");
   return ok(undefined);
 }
+
+// ============================================================================
+// uploadMenuItemPhoto — sube foto al bucket menu-photos y actualiza photo_url (E.6)
+// ============================================================================
+
+export async function uploadMenuItemPhoto(
+  formData: FormData
+): Promise<ActionResult<{ photo_url: string }>> {
+  const auth = await handleAuth();
+  if (!auth.ok) return auth;
+
+  const menuItemId = formData.get("menuItemId");
+  const file = formData.get("file");
+
+  if (!menuItemId || typeof menuItemId !== "string") return fail("menuItemId requerido");
+  if (!file || !(file instanceof File) || file.size === 0) return fail("Archivo requerido");
+  if (file.size > 5 * 1024 * 1024) return fail("La foto no puede superar 5 MB");
+
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
+  const allowedExts = ["jpg", "jpeg", "png", "webp"];
+  if (!allowedExts.includes(ext)) return fail("Solo se permiten imágenes JPG, PNG o WebP");
+
+  const path = `${menuItemId}.${ext}`;
+  const supabase = await createSupabaseAdmin();
+
+  const { error: uploadError } = await supabase.storage
+    .from("menu-photos")
+    .upload(path, file, { upsert: true, contentType: file.type });
+
+  if (uploadError) return fail(uploadError.message);
+
+  const { data: { publicUrl } } = supabase.storage
+    .from("menu-photos")
+    .getPublicUrl(path);
+
+  const { data: existing } = await supabase
+    .from("menu_items")
+    .select("menu_id")
+    .eq("id", menuItemId)
+    .single();
+
+  const { error: updateError } = await supabase
+    .from("menu_items")
+    .update({ photo_url: publicUrl })
+    .eq("id", menuItemId);
+
+  if (updateError) return fail(updateError.message);
+
+  if (existing?.menu_id) revalidatePath(`/menus/${existing.menu_id}`);
+  revalidatePath("/menus");
+  return ok({ photo_url: publicUrl });
+}

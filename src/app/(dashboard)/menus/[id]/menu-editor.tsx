@@ -19,6 +19,7 @@ import {
   updateMenuItemField,
 } from "@/app/actions/menus";
 import { Plus, Trash2, CheckCircle2 } from "lucide-react";
+import { PhotoUploadButton } from "./photo-upload-button";
 import type { MenuItem, MenuCategory, MenuStatus } from "@/lib/types/database";
 
 interface RecipeOption {
@@ -207,6 +208,7 @@ export function MenuEditor({ menuId, menuStatus, items: initialItems, recipeOpti
                   <th className="w-40 px-4 py-3 font-medium">Categoría</th>
                   <th className="w-64 px-4 py-3 font-medium">Receta vinculada</th>
                   <th className="w-20 px-4 py-3 text-center font-medium">Disp.</th>
+                  {isEditable && <th className="w-24 px-4 py-3 font-medium">Foto</th>}
                   {isEditable && <th className="w-16 px-4 py-3" />}
                 </tr>
               </thead>
@@ -284,6 +286,21 @@ export function MenuEditor({ menuId, menuStatus, items: initialItems, recipeOpti
                         className="h-4 w-4 cursor-pointer rounded accent-primary"
                       />
                     </td>
+
+                    {/* Foto */}
+                    {isEditable && (
+                      <td className="px-4 py-2">
+                        <PhotoUploadButton
+                          menuItemId={item.id}
+                          currentPhotoUrl={item.photo_url}
+                          onUpload={(url) =>
+                            setItems((prev) =>
+                              prev.map((i) => (i.id === item.id ? { ...i, photo_url: url } : i))
+                            )
+                          }
+                        />
+                      </td>
+                    )}
 
                     {/* Eliminar */}
                     {isEditable && (
