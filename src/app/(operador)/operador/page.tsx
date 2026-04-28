@@ -1,11 +1,9 @@
 import { requireUser } from "@/lib/auth/require-user";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
-import { OrderStatusBadge } from "@/components/ui/badge";
 import Link from "next/link";
 import { ChefHat, Package, AlertTriangle } from "lucide-react";
 import { formatART } from "@/lib/utils/timezone";
-import type { OrderStatus } from "@/lib/types/database";
 
 export default async function OperadorDashboardPage() {
   await requireUser();
@@ -13,13 +11,12 @@ export default async function OperadorDashboardPage() {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  const [productionRes, lowStockRes] = await Promise.all([
+  const [ticketsRes, lowStockRes] = await Promise.all([
     supabase
-      .from("orders")
-      .select("id, week_label, order_code, status, total_units, organization:organizations(name)")
-      .in("status", ["confirmed", "in_production"])
-      .order("created_at", { ascending: false })
-      .limit(10),
+      .from("production_tickets")
+      .select("id, status, quantity_target, production_date, menu_item:menu_items(display_name)")
+      .eq("production_date", today)
+      .not("status", "eq", "cancelled"),
     supabase
       .from("inventory_items")
       .select("id, name, unit, current_stock, min_stock")
@@ -29,8 +26,12 @@ export default async function OperadorDashboardPage() {
       .limit(10),
   ]);
 
-  const orders = productionRes.data ?? [];
+  const todayTickets = ticketsRes.data ?? [];
   const lowStock = lowStockRes.data ?? [];
+
+  const pendingCount = todayTickets.filter((t) => t.status === "pending").length;
+  const inProgressCount = todayTickets.filter((t) => t.status === "in_progress").length;
+  const readyCount = todayTickets.filter((t) => t.status === "ready").length;
 
   return (
     <div className="max-w-3xl">
@@ -38,40 +39,38 @@ export default async function OperadorDashboardPage() {
       <p className="text-sm text-stone-400 mb-8">{formatART(new Date().toISOString(), "EEEE dd MMMM yyyy")}</p>
 
       <div className="grid sm:grid-cols-2 gap-6">
-        {/* Pedidos en producción */}
+        {/* Producción hoy */}
         <div>
           <div className="flex items-center gap-2 mb-3">
             <ChefHat className="h-4 w-4 text-[#D4622B]" />
             <h2 className="text-sm font-semibold text-stone-600 uppercase tracking-wide">
-              Pedidos activos ({orders.length})
+              Producción hoy ({todayTickets.length})
             </h2>
           </div>
-          {orders.length === 0 ? (
+          {todayTickets.length === 0 ? (
             <Card>
-              <p className="p-4 text-center text-stone-400 text-sm">Sin pedidos activos.</p>
+              <p className="p-4 text-center text-stone-400 text-sm">Sin tickets de producción para hoy.</p>
             </Card>
           ) : (
-            <div className="space-y-2">
-              {orders.map((order) => {
-                const org = order.organization as unknown as { name: string } | null;
-                return (
-                  <Link key={order.id} href={`/operador/produccion/${order.id}`}>
-                    <Card className="hover:border-[#D4622B]/40 transition-colors cursor-pointer">
-                      <div className="flex items-center justify-between px-4 py-3">
-                        <div>
-                          <p className="text-sm font-medium text-stone-900">{org?.name ?? "—"}</p>
-                          <p className="text-xs text-stone-400">{order.week_label} · {order.total_units} viandas</p>
-                        </div>
-                        <OrderStatusBadge status={order.status as OrderStatus} />
-                      </div>
-                    </Card>
-                  </Link>
-                );
-              })}
-            </div>
+            <Card>
+              <div className="p-4 grid grid-cols-3 gap-3 text-center">
+                <div>
+                  <p className="text-2xl font-bold text-amber-600">{pendingCount}</p>
+                  <p className="text-xs text-stone-400 mt-0.5">Pendientes</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-blue-600">{inProgressCount}</p>
+                  <p className="text-xs text-stone-400 mt-0.5">En producción</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-green-600">{readyCount}</p>
+                  <p className="text-xs text-stone-400 mt-0.5">Listos</p>
+                </div>
+              </div>
+            </Card>
           )}
           <Link href="/operador/produccion" className="text-xs text-[#D4622B] hover:underline mt-2 inline-block">
-            Ver todos →
+            Ir a producción →
           </Link>
         </div>
 
