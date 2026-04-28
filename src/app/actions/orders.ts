@@ -986,6 +986,12 @@ export async function returnOrderToClient(input: {
 
   if (updateError) return fail(updateError.message);
 
+  // Reabrir todas las secciones para que el cliente pueda volver a cargar
+  await supabase
+    .from("order_sections")
+    .update({ closed_at: null, closed_by_participant_id: null })
+    .eq("order_id", input.orderId);
+
   await createOrderEvent({
     orderId: input.orderId,
     eventType: "override",

@@ -43,6 +43,16 @@ export async function clientAdminCloseOrder(
     return { ok: false, error: "El pedido no puede cerrarse en su estado actual" };
   }
 
+  // 1. Cerrar todas las secciones abiertas
+  const now = new Date().toISOString();
+  const { error: secErr } = await db
+    .from("order_sections")
+    .update({ closed_at: now, closed_by_participant_id: null })
+    .eq("order_id", orderId)
+    .is("closed_at", null);
+  if (secErr) return { ok: false, error: secErr.message };
+
+  // 2. Cambiar status del pedido
   const { error: updateError } = await db
     .from("orders")
     .update({ status: "awaiting_confirmation" })
@@ -56,7 +66,7 @@ export async function clientAdminCloseOrder(
       eventType: "confirmed",
       actorId: user.id,
       actorRole: "client",
-      payload: { action: "client_closed", newStatus: "awaiting_confirmation" },
+      payload: { action: "closed_by_client_admin", sections_closed: "all", newStatus: "awaiting_confirmation" },
     });
   } catch {
     /* non-critical — order already updated */
@@ -64,6 +74,9 @@ export async function clientAdminCloseOrder(
 
   revalidatePath(`/mi-portal/pedidos/${orderId}`);
   revalidatePath("/mi-portal/pedidos");
+  revalidatePath("/mi-portal/equipo");
+  revalidatePath(`/pedidos/${orderId}`);
+  revalidatePath("/pedidos");
 
   return { ok: true, data: undefined };
 }

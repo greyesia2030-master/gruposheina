@@ -212,7 +212,7 @@ export default async function MiPortalPedidoDetailPage({
             <Users className="h-4 w-4" />
             Ver participantes
           </Link>
-          {["draft", "partially_filled", "awaiting_confirmation"].includes(order.status) &&
+          {["draft", "partially_filled"].includes(order.status) &&
             ["client_admin", "superadmin", "admin"].includes(currentUser.role) && (
             <Link
               href={`/mi-portal/pedidos/${id}/cargar`}
