@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin-client";
 import { requireUser } from "@/lib/auth/require-user";
 import { createOrderEvent } from "@/lib/orders/events";
 import { insertPlaceholders } from "@/lib/orders/placeholders";
+import { closeOrderSectionFromPublicForm } from "@/app/actions/shared-form-public";
 
 type ActionResult<T = void> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -276,4 +277,243 @@ export async function createOrderAsClientAdmin(input: {
       formToken: formToken.token,
     },
   };
+}
+
+// ─── getOrderForCargar ────────────────────────────────────────────────────────
+
+export type CargarMenuItem = {
+  id: string;
+  day_of_week: number;
+  option_code: string;
+  display_name: string;
+};
+
+export type CargarSection = { id: string; name: string; display_order: number };
+
+export async function getOrderForCargar(orderId: string): Promise<
+  ActionResult<{
+    order: { id: string; week_label: string; status: string; menu_id: string };
+    sections: CargarSection[];
+    menuItems: CargarMenuItem[];
+  }>
+> {
+  let user;
+  try {
+    user = await requireUser();
+  } catch {
+    return { ok: false, error: "No autenticado" };
+  }
+
+  if (!user.organizationId) return { ok: false, error: "Sin organización asignada" };
+  if (!["client_admin", "superadmin", "admin"].includes(user.role)) {
+    return { ok: false, error: "Se requiere rol de administrador de cliente" };
+  }
+
+  const db = createAdminClient();
+
+  const { data: order } = await db
+    .from("orders")
+    .select("id, week_label, status, menu_id, organization_id")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (!order) return { ok: false, error: "Pedido no encontrado" };
+  if ((order as { organization_id: string }).organization_id !== user.organizationId) {
+    return { ok: false, error: "Pedido no pertenece a tu organización" };
+  }
+
+  const validStatuses = ["draft", "awaiting_confirmation", "partially_filled"];
+  if (!validStatuses.includes(order.status)) {
+    return { ok: false, error: "El pedido no está disponible para carga" };
+  }
+
+  const [{ data: sections }, { data: menuItems }] = await Promise.all([
+    db
+      .from("order_sections")
+      .select("id, name, display_order")
+      .eq("order_id", orderId)
+      .order("display_order"),
+    db
+      .from("menu_items")
+      .select("id, day_of_week, option_code, display_name")
+      .eq("menu_id", order.menu_id)
+      .eq("is_available", true)
+      .order("day_of_week")
+      .order("option_code"),
+  ]);
+
+  return {
+    ok: true,
+    data: {
+      order: {
+        id: order.id,
+        week_label: order.week_label,
+        status: order.status,
+        menu_id: order.menu_id,
+      },
+      sections: (sections ?? []) as CargarSection[],
+      menuItems: (menuItems ?? []) as CargarMenuItem[],
+    },
+  };
+}
+
+// ─── submitOwnOrderAsClientAdmin ──────────────────────────────────────────────
+
+export async function submitOwnOrderAsClientAdmin(input: {
+  orderId: string;
+  sectionId: string;
+  items: { menuItemId: string; quantity: number }[];
+}): Promise<ActionResult> {
+  let user;
+  try {
+    user = await requireUser();
+  } catch {
+    return { ok: false, error: "No autenticado" };
+  }
+
+  if (!user.organizationId) return { ok: false, error: "Sin organización asignada" };
+  if (!["client_admin", "superadmin", "admin"].includes(user.role)) {
+    return { ok: false, error: "Se requiere rol de administrador de cliente" };
+  }
+
+  const db = createAdminClient();
+
+  // Get user's email for participant matching
+  const { data: userRecord } = await db
+    .from("users")
+    .select("email, phone")
+    .eq("id", user.id)
+    .maybeSingle();
+  const userContact = (userRecord as unknown as { email: string | null; phone: string | null } | null)?.email
+    ?? (userRecord as unknown as { email: string | null; phone: string | null } | null)?.phone
+    ?? null;
+  if (!userContact) return { ok: false, error: "No se encontró contacto del usuario registrado" };
+
+  // Validate order
+  const { data: order } = await db
+    .from("orders")
+    .select("id, status, organization_id, menu_id")
+    .eq("id", input.orderId)
+    .maybeSingle();
+
+  if (!order) return { ok: false, error: "Pedido no encontrado" };
+  if ((order as { organization_id: string }).organization_id !== user.organizationId) {
+    return { ok: false, error: "Pedido no pertenece a tu organización" };
+  }
+
+  const validStatuses = ["draft", "awaiting_confirmation", "partially_filled"];
+  if (!validStatuses.includes(order.status)) {
+    return { ok: false, error: "El pedido no permite carga en este estado" };
+  }
+
+  // Validate section belongs to order
+  const { data: section } = await db
+    .from("order_sections")
+    .select("id, order_id")
+    .eq("id", input.sectionId)
+    .maybeSingle();
+
+  if (!section || (section as { order_id: string }).order_id !== input.orderId) {
+    return { ok: false, error: "Sección no válida para este pedido" };
+  }
+
+  // Find or create participant by contact
+  const normalizedContact = userContact.toLowerCase();
+  let participantId: string;
+
+  const { data: existing } = await db
+    .from("order_participants")
+    .select("id")
+    .eq("section_id", input.sectionId)
+    .eq("member_contact", normalizedContact)
+    .maybeSingle();
+
+  if (existing) {
+    participantId = existing.id;
+    // Reset submitted_at so we can re-submit
+    await db
+      .from("order_participants")
+      .update({ submitted_at: null, last_activity_at: new Date().toISOString() })
+      .eq("id", participantId);
+  } else {
+    const { data: newParticipant, error: insertErr } = await db
+      .from("order_participants")
+      .insert({
+        order_id: input.orderId,
+        section_id: input.sectionId,
+        display_name: user.fullName ?? normalizedContact,
+        member_contact: normalizedContact,
+        contact_type: normalizedContact.includes("@") ? "email" : "phone",
+        is_authorized: true,
+        first_seen_at: new Date().toISOString(),
+        last_activity_at: new Date().toISOString(),
+        submitted_at: null,
+      })
+      .select("id")
+      .single();
+
+    if (insertErr || !newParticipant) {
+      return { ok: false, error: insertErr?.message ?? "Error al crear participante" };
+    }
+    participantId = newParticipant.id;
+  }
+
+  // Delete old lines for this participant
+  await db.from("order_lines").delete().eq("participant_id", participantId);
+
+  // Fetch menu item details for the selected items
+  const selectedItems = input.items.filter((i) => i.quantity > 0);
+  if (selectedItems.length === 0) {
+    return { ok: false, error: "Seleccioná al menos 1 vianda" };
+  }
+
+  const menuItemIds = selectedItems.map((i) => i.menuItemId);
+  const { data: menuItemDetails } = await db
+    .from("menu_items")
+    .select("id, option_code, display_name, day_of_week")
+    .in("id", menuItemIds);
+
+  const itemMap = new Map(
+    (menuItemDetails ?? []).map((m) => [m.id, m as { id: string; option_code: string; display_name: string; day_of_week: number }])
+  );
+
+  const lineInserts = selectedItems
+    .map((item) => {
+      const meta = itemMap.get(item.menuItemId);
+      if (!meta) return null;
+      return {
+        order_id: input.orderId,
+        menu_item_id: item.menuItemId,
+        day_of_week: meta.day_of_week,
+        department: "participante",
+        quantity: item.quantity,
+        unit_price: 0,
+        option_code: meta.option_code,
+        display_name: meta.display_name,
+        section_id: input.sectionId,
+        participant_id: participantId,
+      };
+    })
+    .filter(Boolean);
+
+  const { error: linesError } = await db.from("order_lines").insert(lineInserts);
+  if (linesError) return { ok: false, error: linesError.message };
+
+  // Mark section as submitted via the standard flow
+  await closeOrderSectionFromPublicForm(input.sectionId, participantId);
+
+  try {
+    await createOrderEvent({
+      orderId: input.orderId,
+      eventType: "line_added",
+      actorId: user.id,
+      actorRole: "client",
+      payload: { source: "client_admin_self_load", sectionId: input.sectionId },
+    });
+  } catch { /* non-critical */ }
+
+  revalidatePath(`/mi-portal/pedidos/${input.orderId}`);
+  revalidatePath("/mi-portal/pedidos");
+
+  return { ok: true, data: undefined };
 }
