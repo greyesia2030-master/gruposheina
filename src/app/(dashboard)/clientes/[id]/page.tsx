@@ -13,6 +13,7 @@ import { AddAuthorizedPhone } from "./add-authorized-phone";
 import { RemoveAuthorizedPhone } from "./remove-authorized-phone";
 import { EditOrgForm } from "./edit-org-form";
 import { AddUserButton } from "./add-user-button";
+import { EditUserButton } from "./edit-user-button";
 import { DeactivateButton } from "./deactivate-button";
 import type { OrderStatus, Organization } from "@/lib/types/database";
 import { MessageSquare, Users, Phone, Building2, Clock, ShoppingBag } from "lucide-react";
@@ -227,6 +228,7 @@ export default async function ClienteDetailPage({
                     <th className="px-4 py-3 font-medium">Teléfono</th>
                     <th className="px-4 py-3 font-medium">Rol</th>
                     <th className="px-4 py-3 font-medium">Estado</th>
+                    {canManage && <th className="px-4 py-3 font-medium">Acciones</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -241,6 +243,11 @@ export default async function ClienteDetailPage({
                           {u.is_active ? "Activo" : "Inactivo"}
                         </Badge>
                       </td>
+                      {canManage && (
+                        <td className="px-4 py-3">
+                          <EditUserButton user={u} orgId={id} />
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

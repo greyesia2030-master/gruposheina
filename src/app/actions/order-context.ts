@@ -58,7 +58,8 @@ export async function getOrderContext(
       db
         .from("order_participants")
         .select("id", { count: "exact", head: true })
-        .eq("order_id", order_id),
+        .eq("order_id", order_id)
+        .not("submitted_at", "is", null),
       db
         .from("client_departments")
         .select("name, expected_participants")

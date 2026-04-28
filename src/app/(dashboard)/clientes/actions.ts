@@ -222,3 +222,117 @@ export async function addUserToOrgAction(
   revalidatePath(`/clientes/${orgId}`);
   return ok();
 }
+
+// ── updateClientUserAction ─────────────────────────────────────────────────
+
+const updateUserSchema = z.object({
+  full_name: z.string().trim().min(1, "Nombre obligatorio"),
+  email: z.string().email("Email inválido"),
+  phone: z.string().trim().nullable().optional(),
+  role: z.enum(["client_admin", "client_user"]),
+  is_active: z.boolean(),
+});
+
+export async function updateClientUserAction(
+  userId: string,
+  orgId: string,
+  data: z.input<typeof updateUserSchema>
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const actor = await requireUser();
+  if (!canManageClients(actor.role)) return fail("Sin permisos");
+
+  const parsed = updateUserSchema.safeParse(data);
+  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Datos inválidos");
+  const d = parsed.data;
+
+  const supabase = await createSupabaseAdmin();
+
+  const { data: existing } = await supabase
+    .from("users")
+    .select("id, auth_id")
+    .eq("id", userId)
+    .eq("organization_id", orgId)
+    .maybeSingle();
+
+  if (!existing) return fail("Usuario no encontrado en esta organización");
+
+  const { error } = await supabase
+    .from("users")
+    .update({
+      full_name: d.full_name,
+      email: d.email,
+      phone: d.phone || null,
+      role: d.role,
+      is_active: d.is_active,
+    })
+    .eq("id", userId);
+
+  if (error) return fail(error.message);
+
+  const ex = existing as { auth_id: string | null };
+  if (ex.auth_id) {
+    await supabase.auth.admin.updateUserById(ex.auth_id, { email: d.email });
+  }
+
+  revalidatePath(`/clientes/${orgId}`);
+  return ok();
+}
+
+// ── resetClientUserPasswordAction ──────────────────────────────────────────
+
+export async function resetClientUserPasswordAction(
+  userId: string,
+  orgId: string,
+  newPassword: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const actor = await requireUser();
+  if (!canManageClients(actor.role)) return fail("Sin permisos");
+
+  if (!newPassword || newPassword.length < 8) {
+    return fail("La contraseña debe tener al menos 8 caracteres");
+  }
+
+  const supabase = await createSupabaseAdmin();
+
+  const { data: user } = await supabase
+    .from("users")
+    .select("id, auth_id, email, full_name")
+    .eq("id", userId)
+    .eq("organization_id", orgId)
+    .maybeSingle();
+
+  if (!user) return fail("Usuario no encontrado");
+
+  const u = user as { id: string; auth_id: string | null; email: string; full_name: string | null };
+
+  if (u.auth_id) {
+    const { error } = await supabase.auth.admin.updateUserById(u.auth_id, {
+      password: newPassword,
+    });
+    if (error) return fail(error.message);
+  } else {
+    const { data: authData, error: createErr } = await supabase.auth.admin.createUser({
+      email: u.email,
+      password: newPassword,
+      email_confirm: true,
+      user_metadata: { full_name: u.full_name ?? u.email },
+    });
+
+    if (createErr || !authData.user) {
+      return fail(createErr?.message ?? "Error al crear usuario de acceso");
+    }
+
+    const { error: linkErr } = await supabase
+      .from("users")
+      .update({ auth_id: authData.user.id })
+      .eq("id", userId);
+
+    if (linkErr) {
+      await supabase.auth.admin.deleteUser(authData.user.id);
+      return fail(linkErr.message);
+    }
+  }
+
+  revalidatePath(`/clientes/${orgId}`);
+  return ok();
+}
