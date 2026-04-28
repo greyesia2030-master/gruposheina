@@ -12,7 +12,7 @@ export interface OrderContext {
   closedSections: number;
   actualParticipants: number;
   expectedTotalParticipants: number;
-  validUntil: string;
+  cutoffAt: string;
   currentParticipant?: { display_name: string; section_name: string };
 }
 
@@ -48,7 +48,7 @@ export async function getOrderContext(
         .maybeSingle(),
       db
         .from("orders")
-        .select("week_label")
+        .select("week_label, custom_cutoff_at")
         .eq("id", order_id)
         .maybeSingle(),
       db
@@ -74,13 +74,12 @@ export async function getOrderContext(
     ]);
 
   const org = orgRes.data as { name: string; member_id: string | null } | null;
-  const order = orderRes.data as { week_label: string } | null;
+  const order = orderRes.data as { week_label: string; custom_cutoff_at: string | null } | null;
   const sections = (sectionsRes.data ?? []) as { id: string; name: string; closed_at: string | null }[];
   const depts = (deptRes.data ?? []) as { name: string; expected_participants: number }[];
 
   if (!org || !order) return { ok: false, error: "data_missing" };
 
-  // Sum expected_participants from client_departments for the sections in this order
   const sectionNames = new Set(sections.map((s) => s.name.toLowerCase()));
   const expectedTotalParticipants = depts
     .filter((d) => sectionNames.has(d.name.toLowerCase()))
@@ -101,6 +100,9 @@ export async function getOrderContext(
     };
   }
 
+  // custom_cutoff_at is the real order deadline; fallback to token expiry if not set
+  const cutoffAt = order.custom_cutoff_at ?? valid_until;
+
   return {
     ok: true,
     data: {
@@ -112,7 +114,7 @@ export async function getOrderContext(
       closedSections: sections.filter((s) => s.closed_at !== null).length,
       actualParticipants: participantsRes.count ?? 0,
       expectedTotalParticipants,
-      validUntil: valid_until,
+      cutoffAt,
       currentParticipant,
     },
   };

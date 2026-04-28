@@ -24,14 +24,14 @@ export function OrderContextHeader({ token }: { token: string }) {
     getOrderContext(token, at).then((res) => {
       if (res.ok) {
         setCtx(res.data);
-        setCountdown(formatCountdown(res.data.validUntil));
+        setCountdown(formatCountdown(res.data.cutoffAt));
       }
     });
   }, [token]);
 
   useEffect(() => {
     if (!ctx) return;
-    const id = setInterval(() => setCountdown(formatCountdown(ctx.validUntil)), 60000);
+    const id = setInterval(() => setCountdown(formatCountdown(ctx.cutoffAt)), 60000);
     return () => clearInterval(id);
   }, [ctx]);
 
