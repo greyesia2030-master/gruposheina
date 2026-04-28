@@ -2,25 +2,9 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/require-user";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import Link from "next/link";
-import { ChefHat, Package, LayoutDashboard, LogOut } from "lucide-react";
+import { ChefHat, Package, LayoutDashboard } from "lucide-react";
 import { RoleGuard } from "@/components/auth/role-guard";
-
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
-async function SignOutButton() {
-  return (
-    <form action="/api/auth/signout" method="post">
-      <button
-        type="submit"
-        className="flex items-center gap-2 px-3 py-2 text-sm text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-lg transition-colors w-full"
-      >
-        <LogOut className="h-4 w-4" />
-        Salir
-      </button>
-    </form>
-  );
-}
+import { SignOutButton } from "@/components/auth/sign-out-button";
 
 const OPERATOR_ROLES = ["operator", "kitchen", "warehouse", "superadmin", "admin"];
 

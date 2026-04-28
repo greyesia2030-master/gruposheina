@@ -1,28 +1,14 @@
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/require-user";
-import { LogOut } from "lucide-react";
 import { PortalNavLinks } from "./portal-nav";
 import { RoleGuard } from "@/components/auth/role-guard";
+import { SignOutButton } from "@/components/auth/sign-out-button";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const CLIENT_ROLES = ["client_admin", "client_user"];
 const QA_ROLES = ["superadmin", "admin"];
-
-async function SignOutButton() {
-  return (
-    <form action="/api/auth/signout" method="post">
-      <button
-        type="submit"
-        className="flex items-center gap-2 px-3 py-2 text-sm text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-lg transition-colors w-full"
-      >
-        <LogOut className="h-4 w-4" />
-        Salir
-      </button>
-    </form>
-  );
-}
 
 export default async function PortalClienteLayout({
   children,
