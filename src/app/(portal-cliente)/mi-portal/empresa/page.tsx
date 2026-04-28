@@ -45,9 +45,9 @@ export default async function MiEmpresaPage() {
         <div className="bg-white rounded-xl border border-stone-200 p-6">
           <dl className="divide-y divide-stone-100">
             {fields.map(([label, value]) => (
-              <div key={label} className="flex justify-between py-3 text-sm">
-                <dt className="text-stone-500 shrink-0 mr-4">{label}</dt>
-                <dd className="text-stone-900 text-right font-medium">{value}</dd>
+              <div key={label} className="flex flex-col gap-0.5 py-3 text-sm sm:flex-row sm:justify-between sm:items-baseline">
+                <dt className="text-stone-500">{label}</dt>
+                <dd className="text-stone-900 font-medium break-all sm:text-right sm:ml-4">{value}</dd>
               </div>
             ))}
           </dl>

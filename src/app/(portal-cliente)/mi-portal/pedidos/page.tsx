@@ -37,15 +37,15 @@ export default async function MiPortalPedidosPage() {
           {orders.map((order) => (
             <Link key={order.id} href={`/mi-portal/pedidos/${order.id}`}>
               <Card className="hover:border-[#D4622B]/40 transition-colors cursor-pointer">
-                <div className="flex items-center justify-between px-4 py-3">
-                  <div>
-                    <p className="font-medium text-stone-900 text-sm">{order.week_label}</p>
-                    <p className="text-xs text-stone-400 mt-0.5">
+                <div className="flex items-center justify-between gap-3 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="font-medium text-stone-900 text-sm truncate">{order.week_label}</p>
+                    <p className="text-xs text-stone-400 mt-0.5 truncate">
                       {formatART(order.created_at, "dd MMM yyyy")} · {order.total_units} viandas
                     </p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <p className="text-xs font-mono text-stone-400">{order.order_code}</p>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <p className="hidden sm:block text-xs font-mono text-stone-400">{order.order_code}</p>
                     <OrderStatusBadge status={order.status as OrderStatus} />
                   </div>
                 </div>

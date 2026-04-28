@@ -153,7 +153,7 @@ export default function SharedOrderPage({ params }: { params: Promise<{ token: s
           {sections.map((s) => (
             <label
               key={s.id}
-              className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+              className={`flex items-center gap-3 p-3 min-h-11 border rounded-lg cursor-pointer transition-colors ${
                 selectedSectionId === s.id
                   ? "border-[#D4622B] bg-orange-50"
                   : "border-gray-200 hover:bg-gray-50"
@@ -183,7 +183,7 @@ export default function SharedOrderPage({ params }: { params: Promise<{ token: s
                 key={u.id}
                 type="button"
                 onClick={() => setSelectedUser(u)}
-                className={`w-full flex items-center gap-3 p-3 border rounded-lg transition-colors text-left ${
+                className={`w-full flex items-center gap-3 p-3 min-h-11 border rounded-lg transition-colors text-left ${
                   selectedUser?.id === u.id
                     ? "border-[#D4622B] bg-orange-50"
                     : "border-gray-200 hover:bg-gray-50"
