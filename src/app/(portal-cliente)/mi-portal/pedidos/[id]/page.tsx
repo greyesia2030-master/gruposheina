@@ -16,6 +16,18 @@ const DAY_NAMES: Record<number, string> = {
   1: "Lunes", 2: "Martes", 3: "Miércoles", 4: "Jueves", 5: "Viernes",
 };
 
+function cutoffRelativeLabel(cutoffAt: string | null): string {
+  if (!cutoffAt) return "—";
+  const diff = new Date(cutoffAt).getTime() - Date.now();
+  if (diff <= 0) return "Cerrado";
+  const totalMin = Math.floor(diff / 60000);
+  if (totalMin < 60) return `en ${totalMin}m`;
+  const hours = Math.floor(totalMin / 60);
+  if (hours < 24) return `en ${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `en ${days} día${days !== 1 ? "s" : ""}`;
+}
+
 export default async function MiPortalPedidoDetailPage({
   params,
 }: {
@@ -29,7 +41,7 @@ export default async function MiPortalPedidoDetailPage({
 
   const { data: order } = await supabase
     .from("orders")
-    .select("id, week_label, order_code, status, total_units, created_at, organization_id, form_token_id")
+    .select("id, week_label, order_code, status, total_units, created_at, organization_id, form_token_id, custom_cutoff_at")
     .eq("id", id)
     .eq("organization_id", currentUser.organizationId)
     .single();
@@ -154,7 +166,7 @@ export default async function MiPortalPedidoDetailPage({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 mb-6">
+      <div className="grid grid-cols-3 gap-3 mb-6">
         <Card>
           <div className="p-4 text-center">
             <p className="text-xs text-stone-400 mb-1">Total viandas</p>
@@ -167,6 +179,26 @@ export default async function MiPortalPedidoDetailPage({
             <p className="text-sm font-medium text-stone-700">
               {formatART(order.created_at, "dd MMM yyyy")}
             </p>
+          </div>
+        </Card>
+        <Card>
+          <div className="p-4 text-center">
+            <p className="text-xs text-stone-400 mb-1">Cierra</p>
+            {(order as Record<string, unknown>).custom_cutoff_at ? (
+              <>
+                <p className="text-sm font-medium text-stone-700">
+                  {formatART(
+                    (order as Record<string, unknown>).custom_cutoff_at as string,
+                    "dd MMM HH:mm"
+                  )}
+                </p>
+                <p className="text-xs text-[#D4622B] mt-0.5">
+                  {cutoffRelativeLabel((order as Record<string, unknown>).custom_cutoff_at as string)}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm font-medium text-stone-400">—</p>
+            )}
           </div>
         </Card>
       </div>

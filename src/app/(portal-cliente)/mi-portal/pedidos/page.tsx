@@ -7,6 +7,18 @@ import { formatART } from "@/lib/utils/timezone";
 import type { OrderStatus } from "@/lib/types/database";
 import { NewOrderModal } from "./new-order-modal";
 
+function cutoffShortLabel(cutoffAt: string | null): string | null {
+  if (!cutoffAt) return null;
+  const diff = new Date(cutoffAt).getTime() - Date.now();
+  if (diff <= 0) return "Cerrado";
+  const totalMin = Math.floor(diff / 60000);
+  if (totalMin < 60) return `Cierra en ${totalMin}m`;
+  const hours = Math.floor(totalMin / 60);
+  if (hours < 24) return `Cierra en ${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `Cierra en ${days}d`;
+}
+
 export default async function MiPortalPedidosPage() {
   const currentUser = await requireUser();
   if (!currentUser.organizationId) return null;
@@ -14,7 +26,7 @@ export default async function MiPortalPedidosPage() {
   const supabase = await createSupabaseServer();
   const { data: orders } = await supabase
     .from("orders")
-    .select("id, week_label, order_code, status, total_units, created_at")
+    .select("id, week_label, order_code, status, total_units, created_at, custom_cutoff_at")
     .eq("organization_id", currentUser.organizationId)
     .order("created_at", { ascending: false })
     .limit(50);
@@ -34,24 +46,32 @@ export default async function MiPortalPedidosPage() {
         </Card>
       ) : (
         <div className="space-y-2">
-          {orders.map((order) => (
-            <Link key={order.id} href={`/mi-portal/pedidos/${order.id}`}>
-              <Card className="hover:border-[#D4622B]/40 transition-colors cursor-pointer">
-                <div className="flex items-center justify-between gap-3 px-4 py-3">
-                  <div className="min-w-0">
-                    <p className="font-medium text-stone-900 text-sm truncate">{order.week_label}</p>
-                    <p className="text-xs text-stone-400 mt-0.5 truncate">
-                      {formatART(order.created_at, "dd MMM yyyy")} · {order.total_units} viandas
-                    </p>
+          {orders.map((order) => {
+            const cutoffLabel = cutoffShortLabel(
+              (order as Record<string, unknown>).custom_cutoff_at as string | null
+            );
+            return (
+              <Link key={order.id} href={`/mi-portal/pedidos/${order.id}`}>
+                <Card className="hover:border-[#D4622B]/40 transition-colors cursor-pointer">
+                  <div className="flex items-center justify-between gap-3 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="font-medium text-stone-900 text-sm truncate">{order.week_label}</p>
+                      <p className="text-xs text-stone-400 mt-0.5 truncate">
+                        {formatART(order.created_at, "dd MMM yyyy")} · {order.total_units} viandas
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {cutoffLabel && (
+                        <p className="hidden sm:block text-xs text-[#D4622B] font-medium">{cutoffLabel}</p>
+                      )}
+                      <p className="hidden sm:block text-xs font-mono text-stone-400">{order.order_code}</p>
+                      <OrderStatusBadge status={order.status as OrderStatus} />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <p className="hidden sm:block text-xs font-mono text-stone-400">{order.order_code}</p>
-                    <OrderStatusBadge status={order.status as OrderStatus} />
-                  </div>
-                </div>
-              </Card>
-            </Link>
-          ))}
+                </Card>
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>
