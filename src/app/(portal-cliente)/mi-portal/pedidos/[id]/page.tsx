@@ -36,10 +36,11 @@ export default async function MiPortalPedidoDetailPage({
 
   if (!order) notFound();
 
+  const db = createAdminClient();
+
   // Share link — only if a form token is linked to this order
   let shareUrl: string | null = null;
   if (order.form_token_id) {
-    const db = createAdminClient();
     const { data: tokenRow } = await db
       .from("order_form_tokens")
       .select("token")
@@ -51,6 +52,25 @@ export default async function MiPortalPedidoDetailPage({
       const host = hdrs.get("host") ?? "localhost:3000";
       const proto = host.includes("localhost") ? "http" : "https";
       shareUrl = `${proto}://${host}/pedido/${tokenRow.token}`;
+    }
+  }
+
+  // Check if order was returned by admin (latest override event with action='returned')
+  let returnReason: string | null = null;
+  if (order.status === "draft") {
+    const { data: events } = await db
+      .from("order_events")
+      .select("payload")
+      .eq("order_id", id)
+      .eq("event_type", "override")
+      .order("created_at", { ascending: false })
+      .limit(5);
+
+    const returned = (events ?? []).find(
+      (e) => (e.payload as { action?: string } | null)?.action === "returned"
+    );
+    if (returned) {
+      returnReason = (returned.payload as { reason?: string } | null)?.reason ?? "Sin motivo especificado";
     }
   }
 
@@ -113,6 +133,27 @@ export default async function MiPortalPedidoDetailPage({
         </div>
       )}
 
+      {/* Returned-by-Sheina banner */}
+      {returnReason && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+          <p className="text-xs font-semibold text-red-700 mb-1">Pedido devuelto por Sheina</p>
+          <p className="text-sm text-red-800">{returnReason}</p>
+          <p className="text-xs text-red-500 mt-2">
+            Corregí el pedido y volvé a cerrarlo para que Sheina lo pueda confirmar.
+          </p>
+        </div>
+      )}
+
+      {/* En revisión indicator */}
+      {order.status === "awaiting_confirmation" && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+          <p className="text-xs font-semibold text-blue-700 mb-0.5">En revisión</p>
+          <p className="text-sm text-blue-800">
+            Tu pedido está siendo revisado por Sheina. Te avisaremos cuando esté confirmado.
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3 mb-6">
         <Card>
           <div className="p-4 text-center">
@@ -150,7 +191,7 @@ export default async function MiPortalPedidoDetailPage({
             </Link>
           )}
         </div>
-        {["draft", "partially_filled"].includes(order.status) && (
+        {["draft", "partially_filled"].includes(order.status) && totalQty > 0 && (
           <CloseOrderButton orderId={order.id} />
         )}
       </div>

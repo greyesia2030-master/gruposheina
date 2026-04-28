@@ -952,3 +952,51 @@ export async function createManualOrder(
   });
 }
 
+// ============================================================================
+// returnOrderToClient — devuelve un pedido awaiting_confirmation → draft
+// ============================================================================
+
+export async function returnOrderToClient(input: {
+  orderId: string;
+  reason: string;
+}): Promise<ActionResult> {
+  const auth = await handleAuth();
+  if (!auth.ok) return auth;
+  if (!["superadmin", "admin"].includes(auth.user.role)) {
+    return fail("Se requiere rol de administrador");
+  }
+
+  const supabase = await createSupabaseAdmin();
+
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, status")
+    .eq("id", input.orderId)
+    .maybeSingle();
+
+  if (!order) return fail("Pedido no encontrado");
+  if (order.status !== "awaiting_confirmation") {
+    return fail("El pedido debe estar en espera de confirmación para poder devolverlo");
+  }
+
+  const { error: updateError } = await supabase
+    .from("orders")
+    .update({ status: "draft" })
+    .eq("id", input.orderId);
+
+  if (updateError) return fail(updateError.message);
+
+  await createOrderEvent({
+    orderId: input.orderId,
+    eventType: "override",
+    actorId: auth.user.id,
+    actorRole: "admin",
+    payload: { action: "returned", reason: input.reason.trim() },
+  });
+
+  revalidatePath(`/pedidos/${input.orderId}`);
+  revalidatePath("/pedidos");
+  revalidatePath(`/mi-portal/pedidos/${input.orderId}`);
+  return ok(undefined);
+}
+

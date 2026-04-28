@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
-import { transitionOrderStatus } from "@/app/actions/orders";
+import { transitionOrderStatus, returnOrderToClient } from "@/app/actions/orders";
 import type { OrderStatus } from "@/lib/types/database";
 import type { StockCheckResult } from "@/app/actions/orders";
 
@@ -50,6 +50,9 @@ export function OrderActions({ orderId, status, isWithinCutoff, stockCheck }: Or
   const [loading, setLoading]               = useState<OrderStatus | null>(null);
   const [showStockDialog, setShowStockDialog] = useState(false);
   const [overrideReason, setOverrideReason]   = useState("");
+  const [showReturnDialog, setShowReturnDialog] = useState(false);
+  const [returnReason, setReturnReason]         = useState("");
+  const [returningOrder, setReturningOrder]     = useState(false);
   const router  = useRouter();
   const { toast } = useToast();
 
@@ -88,6 +91,21 @@ export function OrderActions({ orderId, status, isWithinCutoff, stockCheck }: Or
     setOverrideReason("");
   }
 
+  async function handleReturnOrder() {
+    if (!returnReason.trim()) return;
+    setReturningOrder(true);
+    const result = await returnOrderToClient({ orderId, reason: returnReason.trim() });
+    setReturningOrder(false);
+    setShowReturnDialog(false);
+    setReturnReason("");
+    if (!result.ok) {
+      toast(result.error, "error");
+      return;
+    }
+    toast("Pedido devuelto al cliente", "success");
+    router.refresh();
+  }
+
   return (
     <>
       <div className="flex flex-wrap gap-2">
@@ -103,7 +121,60 @@ export function OrderActions({ orderId, status, isWithinCutoff, stockCheck }: Or
             {action.label}
           </Button>
         ))}
+        {status === "awaiting_confirmation" && (
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={loading !== null || returningOrder}
+            onClick={() => setShowReturnDialog(true)}
+          >
+            Devolver al cliente
+          </Button>
+        )}
       </div>
+
+      {/* Return to client dialog */}
+      <Dialog
+        open={showReturnDialog}
+        onClose={() => { setShowReturnDialog(false); setReturnReason(""); }}
+        title="Devolver pedido al cliente"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary">
+            El pedido volverá a estado borrador y el cliente recibirá el motivo para corregirlo.
+          </p>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">
+              Motivo <span className="text-error">*</span>
+            </label>
+            <textarea
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+              rows={3}
+              placeholder="Ej: Faltan viandas del sector Administración…"
+              value={returnReason}
+              onChange={(e) => setReturnReason(e.target.value)}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => { setShowReturnDialog(false); setReturnReason(""); }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={!returnReason.trim() || returningOrder}
+              loading={returningOrder}
+              onClick={handleReturnOrder}
+            >
+              Devolver
+            </Button>
+          </div>
+        </div>
+      </Dialog>
 
       {/* Stock shortage override dialog */}
       <Dialog
