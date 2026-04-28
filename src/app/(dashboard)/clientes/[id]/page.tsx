@@ -55,7 +55,7 @@ export default async function ClienteDetailPage({
   if (!org) notFound();
 
   // Carga paralela según tab activo
-  const [usersResult, ordersResult] = await Promise.all([
+  const [usersResult, ordersResult, deptsResult] = await Promise.all([
     supabase
       .from("users")
       .select("id, full_name, email, phone, role, is_active, created_at")
@@ -67,10 +67,15 @@ export default async function ClienteDetailPage({
       .eq("organization_id", id)
       .order("created_at", { ascending: false })
       .limit(10),
+    supabase
+      .from("client_departments")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", id),
   ]);
 
   const users = usersResult.data ?? [];
   const orders = ordersResult.data ?? [];
+  const deptCount = deptsResult.count ?? 0;
 
   const TABS = [
     { key: "info",      label: "Información",            icon: <Building2 className="h-4 w-4" /> },
@@ -115,6 +120,25 @@ export default async function ClienteDetailPage({
           </div>
         }
       />
+
+      {/* Warning: no departments configured */}
+      {deptCount === 0 && canManage && (
+        <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <span className="text-amber-500 text-lg leading-none">⚠</span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-amber-800">Sin sectores configurados</p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              Este cliente no tiene sectores. Configurá al menos uno antes de crear pedidos.
+            </p>
+            <Link
+              href={`/clientes/${id}/departamentos`}
+              className="mt-2 inline-block text-xs font-medium text-amber-700 underline hover:text-amber-900"
+            >
+              Ir a sectores →
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="mb-6 flex gap-1 overflow-x-auto border-b border-border">

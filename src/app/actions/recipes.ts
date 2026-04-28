@@ -74,7 +74,7 @@ export async function createRecipe(
     version: 1,
     portions_yield: data.portions,
     cost_per_portion: 0,
-    is_current: true,
+    is_current: false,
     preparation_notes: null,
     created_by: auth.user.id,
   });

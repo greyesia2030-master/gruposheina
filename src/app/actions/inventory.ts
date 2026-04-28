@@ -70,10 +70,19 @@ const INV_CATEGORIES = Object.keys(INV_CATEGORY_LABELS) as [
   ...InvCategory[]
 ];
 
+const VALID_UNITS = ["g", "kg", "ml", "l", "un"] as const;
+
 const createItemSchema = z.object({
   name: z.string().trim().min(1, "El nombre es obligatorio").max(120),
   category: z.enum(INV_CATEGORIES),
-  unit: z.string().trim().min(1, "La unidad es obligatoria").max(20),
+  unit: z
+    .string()
+    .trim()
+    .min(1, "La unidad es obligatoria")
+    .refine(
+      (val) => (VALID_UNITS as readonly string[]).includes(val),
+      "La unidad debe ser: g, kg, ml, l, o un"
+    ),
   currentStock: z.coerce.number().min(0, "El stock no puede ser negativo"),
   minStock: z.coerce.number().min(0, "El mínimo no puede ser negativo"),
   costPerUnit: z.coerce.number().min(0, "El costo no puede ser negativo"),

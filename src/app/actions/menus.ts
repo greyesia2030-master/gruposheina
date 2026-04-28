@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getISOWeek, addDays } from "date-fns";
+import { getISOWeek, addDays, getDay } from "date-fns";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { requireAdmin, AuthError } from "@/lib/auth/require-user";
 import { CATEGORY_ORDER } from "@/lib/types/menus";
@@ -54,6 +54,10 @@ export async function createMenu(
   }
 
   const start = new Date(parsed.data.weekStart + "T00:00:00");
+  if (getDay(start) !== 1) {
+    return fail("La fecha de inicio del menú debe ser un lunes");
+  }
+
   const end = addDays(start, 4);
   const weekNumber = getISOWeek(start);
 

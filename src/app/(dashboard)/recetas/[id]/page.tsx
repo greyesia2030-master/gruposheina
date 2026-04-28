@@ -66,6 +66,15 @@ export default async function RecetaDetailPage({
         }
       />
 
+      {!currentVersion && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm font-semibold text-amber-800">Sin versión activa</p>
+          <p className="text-xs text-amber-700 mt-0.5">
+            Esta receta no tiene versión con ingredientes. Agregá al menos 1 ingrediente para publicarla.
+          </p>
+        </div>
+      )}
+
       {/* Info principal */}
       <div className={`mb-6 grid gap-4 ${showCost ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
         <Card>

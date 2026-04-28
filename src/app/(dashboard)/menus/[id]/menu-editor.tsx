@@ -272,7 +272,9 @@ export function MenuEditor({ menuId, menuStatus, items: initialItems, recipeOpti
                           className="!py-1 text-sm"
                         />
                       ) : (
-                        recipeOptions.find((r) => r.versionId === item.recipe_version_id)?.name ?? "—"
+                        <span className={item.recipe_version_id ? "" : "text-amber-500 font-medium"}>
+                          {recipeOptions.find((r) => r.versionId === item.recipe_version_id)?.name ?? "Sin receta ⚠"}
+                        </span>
                       )}
                     </td>
 
