@@ -514,6 +514,8 @@ export async function submitOwnOrderAsClientAdmin(input: {
 
   revalidatePath(`/mi-portal/pedidos/${input.orderId}`);
   revalidatePath("/mi-portal/pedidos");
+  revalidatePath("/mi-portal/equipo");
+  revalidatePath(`/pedidos/${input.orderId}`);
 
   return { ok: true, data: undefined };
 }

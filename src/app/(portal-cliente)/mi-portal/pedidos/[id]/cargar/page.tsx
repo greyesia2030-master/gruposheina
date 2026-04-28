@@ -38,6 +38,8 @@ export default function CargarPedidoPage({
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [submittedTotal, setSubmittedTotal] = useState(0);
+  const [submittedSection, setSubmittedSection] = useState("");
 
   useEffect(() => {
     getOrderForCargar(id).then((res) => {
@@ -82,6 +84,9 @@ export default function CargarPedidoPage({
       setSubmitError(res.error);
       return;
     }
+    const sectionName = sections.find((s) => s.id === selectedSectionId)?.name ?? "";
+    setSubmittedTotal(totalQty);
+    setSubmittedSection(sectionName);
     setStep("done");
   }
 
@@ -107,7 +112,9 @@ export default function CargarPedidoPage({
       <div className="max-w-xl py-12 text-center">
         <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
         <h1 className="text-xl font-semibold text-stone-900 mb-2">¡Pedido cargado!</h1>
-        <p className="text-stone-500 text-sm mb-6">Tu selección fue registrada correctamente.</p>
+        <p className="text-stone-500 text-sm mb-6">
+          Tu carga se registró: {submittedTotal} vianda{submittedTotal !== 1 ? "s" : ""}{submittedSection ? ` en ${submittedSection}` : ""}.
+        </p>
         <Button onClick={() => router.push(`/mi-portal/pedidos/${id}`)}>
           Ver pedido
         </Button>
