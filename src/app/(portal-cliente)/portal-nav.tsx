@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ShoppingBag, BookOpen, Building2 } from "lucide-react";
+import { ShoppingBag, BookOpen, Building2, Users } from "lucide-react";
 
 const NAV = [
   { label: "Mis pedidos", href: "/mi-portal/pedidos", icon: ShoppingBag },
   { label: "Menú activo", href: "/mi-portal/menu", icon: BookOpen },
+  { label: "Equipo", href: "/mi-portal/equipo", icon: Users },
   { label: "Mi empresa", href: "/mi-portal/empresa", icon: Building2 },
 ];
 
