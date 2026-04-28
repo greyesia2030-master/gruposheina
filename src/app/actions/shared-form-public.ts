@@ -17,6 +17,13 @@ function ts() {
 // Punto de entrada principal del formulario público.
 // Valida el token y retorna todo lo necesario para renderizar el formulario.
 
+export type FormUser = {
+  id: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+};
+
 export async function getSharedFormData(token: string): Promise<
   ActionResult<{
     orderId: string;
@@ -25,6 +32,7 @@ export async function getSharedFormData(token: string): Promise<
     sectionNames: { id: string; name: string }[];
     items: MenuItem[];
     requireContact: boolean;
+    users: FormUser[];
   }>
 > {
   const db = createAdminClient();
@@ -57,7 +65,7 @@ export async function getSharedFormData(token: string): Promise<
     return { ok: false, error: "invalid" };
   }
 
-  const [sectionsRes, itemsRes] = await Promise.all([
+  const [sectionsRes, itemsRes, usersRes] = await Promise.all([
     db
       .from("order_sections")
       .select("id, name, display_order")
@@ -70,14 +78,21 @@ export async function getSharedFormData(token: string): Promise<
       .eq("is_available", true)
       .eq("is_published_to_form", true)
       .order("day_of_week", { ascending: true }),
+    db
+      .from("users")
+      .select("id, full_name, email, phone")
+      .eq("organization_id", tokenRow.organization_id)
+      .eq("is_active", true)
+      .order("full_name", { ascending: true }),
   ]);
 
   const sections = sectionsRes.data ?? [];
   const items = itemsRes.data ?? [];
+  const users = (usersRes.data ?? []) as FormUser[];
 
   console.log(
     `[${ts()}] getSharedFormData: ok — order ${tokenRow.order_id.slice(0, 8)}, ` +
-    `${sections.length} secciones, ${items.length} items`
+    `${sections.length} secciones, ${items.length} items, ${users.length} users`
   );
 
   return {
@@ -89,6 +104,7 @@ export async function getSharedFormData(token: string): Promise<
       sectionNames: sections.map((s) => ({ id: s.id, name: s.name })),
       items: items as unknown as MenuItem[],
       requireContact: (tokenRow as unknown as { require_contact?: boolean }).require_contact ?? true,
+      users,
     },
   };
 }
@@ -135,7 +151,8 @@ export async function joinSection(
   token: string,
   sectionId: string,
   displayName: string,
-  memberContact?: string
+  memberContact?: string,
+  userId?: string
 ): Promise<ActionResult<OrderParticipant>> {
   const db = createAdminClient();
 
@@ -155,8 +172,26 @@ export async function joinSection(
   if (section.order_id !== formToken.order_id) return { ok: false, error: "Sección no pertenece a este formulario" };
   if (section.closed_at) return { ok: false, error: "La sección ya está cerrada" };
 
+  // If userId provided, resolve user and override displayName + contact
+  let resolvedDisplayName = displayName;
+  let resolvedContact = memberContact;
+  if (userId) {
+    const { data: user } = await db
+      .from("users")
+      .select("id, full_name, email, phone, organization_id")
+      .eq("id", userId)
+      .maybeSingle();
+    if (!user) return { ok: false, error: "Usuario no encontrado" };
+    const userRow = user as unknown as { full_name: string; email: string | null; phone: string | null; organization_id: string };
+    if (userRow.organization_id !== formToken.organization_id) {
+      return { ok: false, error: "Usuario no pertenece a esta organización" };
+    }
+    resolvedDisplayName = userRow.full_name;
+    resolvedContact = userRow.email ?? userRow.phone ?? undefined;
+  }
+
   // Classify and authorize contact
-  const contact = memberContact?.trim() || null;
+  const contact = resolvedContact?.trim() || null;
   let contactType: "email" | "phone" | "none" = "none";
   let isAuthorized: boolean | null = null;
 
@@ -236,7 +271,7 @@ export async function joinSection(
     .insert({
       order_id: formToken.order_id!,
       section_id: sectionId,
-      display_name: displayName.trim(),
+      display_name: resolvedDisplayName.trim(),
       form_token_id: formToken.id,
       first_seen_at: new Date().toISOString(),
       last_activity_at: new Date().toISOString(),
