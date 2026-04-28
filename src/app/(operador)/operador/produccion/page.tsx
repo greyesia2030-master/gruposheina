@@ -29,8 +29,8 @@ export default async function OperadorProduccionPage() {
   await requireUser();
   const supabase = await createSupabaseServer();
 
-  const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
-  const sevenDaysLater = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  const in14Days = new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10);
 
   const { data: tickets } = await supabase
     .from("production_tickets")
@@ -38,8 +38,8 @@ export default async function OperadorProduccionPage() {
       "id, status, quantity_target, quantity_produced, quantity_wasted, production_date, started_at, ready_at, menu_item:menu_items(id, display_name, option_code)"
     )
     .not("status", "eq", "cancelled")
-    .gte("production_date", sevenDaysAgo)
-    .lte("production_date", sevenDaysLater)
+    .gte("production_date", today)
+    .lte("production_date", in14Days)
     .order("production_date")
     .order("status");
 

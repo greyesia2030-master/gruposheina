@@ -97,6 +97,8 @@ export async function completeProductionTicket(
   if (ticket.order_id) {
     revalidatePath(`/pedidos/${ticket.order_id}`);
     revalidatePath("/pedidos");
+    revalidatePath(`/mi-portal/pedidos/${ticket.order_id}`);
+    revalidatePath("/mi-portal/pedidos");
   }
   revalidatePath("/");
 

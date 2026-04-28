@@ -10,13 +10,20 @@ export default async function OperadorDashboardPage() {
   const supabase = await createSupabaseServer();
 
   const today = new Date().toISOString().slice(0, 10);
+  const in14Days = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  const [ticketsRes, lowStockRes] = await Promise.all([
+  const [ticketsRes, todayRes, lowStockRes] = await Promise.all([
     supabase
       .from("production_tickets")
-      .select("id, status, quantity_target, production_date, menu_item:menu_items(display_name)")
+      .select("id, status, production_date")
+      .gte("production_date", today)
+      .lte("production_date", in14Days)
+      .in("status", ["pending", "in_progress", "paused", "blocked"]),
+    supabase
+      .from("production_tickets")
+      .select("id, status")
       .eq("production_date", today)
-      .not("status", "eq", "cancelled"),
+      .in("status", ["pending", "in_progress", "paused", "blocked"]),
     supabase
       .from("inventory_items")
       .select("id, name, unit, current_stock, min_stock")
@@ -26,11 +33,13 @@ export default async function OperadorDashboardPage() {
       .limit(10),
   ]);
 
-  const todayTickets = ticketsRes.data ?? [];
+  const activeTickets = ticketsRes.data ?? [];
+  const todayTickets = todayRes.data ?? [];
   const lowStock = lowStockRes.data ?? [];
 
-  const pendingCount = todayTickets.filter((t) => t.status === "pending").length;
-  const inProgressCount = todayTickets.filter((t) => t.status === "in_progress").length;
+  const pendingCount = activeTickets.filter((t) => t.status === "pending").length;
+  const inProgressCount = activeTickets.filter((t) => t.status === "in_progress").length;
+  const pausedCount = activeTickets.filter((t) => t.status === "paused").length;
   const readyCount = todayTickets.filter((t) => t.status === "ready").length;
 
   return (
@@ -39,33 +48,46 @@ export default async function OperadorDashboardPage() {
       <p className="text-sm text-stone-400 mb-8">{formatART(new Date().toISOString(), "EEEE dd MMMM yyyy")}</p>
 
       <div className="grid sm:grid-cols-2 gap-6">
-        {/* Producción hoy */}
+        {/* Tickets activos */}
         <div>
           <div className="flex items-center gap-2 mb-3">
             <ChefHat className="h-4 w-4 text-[#D4622B]" />
             <h2 className="text-sm font-semibold text-stone-600 uppercase tracking-wide">
-              Producción hoy ({todayTickets.length})
+              Tickets activos ({activeTickets.length})
             </h2>
           </div>
-          {todayTickets.length === 0 ? (
+          {activeTickets.length === 0 ? (
             <Card>
-              <p className="p-4 text-center text-stone-400 text-sm">Sin tickets de producción para hoy.</p>
+              <p className="p-4 text-center text-stone-400 text-sm">
+                Sin tickets activos en los próximos 14 días.
+              </p>
             </Card>
           ) : (
             <Card>
-              <div className="p-4 grid grid-cols-3 gap-3 text-center">
-                <div>
-                  <p className="text-2xl font-bold text-amber-600">{pendingCount}</p>
-                  <p className="text-xs text-stone-400 mt-0.5">Pendientes</p>
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-blue-600">{inProgressCount}</p>
-                  <p className="text-xs text-stone-400 mt-0.5">En producción</p>
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-green-600">{readyCount}</p>
-                  <p className="text-xs text-stone-400 mt-0.5">Listos</p>
-                </div>
+              <div className="p-4 space-y-2">
+                {pendingCount > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-stone-500">Pendientes</span>
+                    <span className="font-bold text-amber-600">{pendingCount}</span>
+                  </div>
+                )}
+                {inProgressCount > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-stone-500">En producción</span>
+                    <span className="font-bold text-blue-600">{inProgressCount}</span>
+                  </div>
+                )}
+                {pausedCount > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-stone-500">Pausados</span>
+                    <span className="font-bold text-stone-500">{pausedCount}</span>
+                  </div>
+                )}
+                {todayTickets.length > 0 && (
+                  <p className="text-xs text-stone-400 pt-1 border-t border-stone-100">
+                    {todayTickets.length} para hoy
+                  </p>
+                )}
               </div>
             </Card>
           )}

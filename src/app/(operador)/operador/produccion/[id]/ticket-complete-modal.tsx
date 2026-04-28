@@ -73,7 +73,7 @@ export function TicketCompleteModal({ ticketId, quantityTarget }: Props) {
               </div>
               <div>
                 <label className="block text-sm font-medium text-stone-700 mb-1">
-                  Merma final (viandas)
+                  Viandas defectuosas / no entregables
                 </label>
                 <input
                   type="number"

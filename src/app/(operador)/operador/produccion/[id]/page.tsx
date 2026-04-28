@@ -168,7 +168,7 @@ export default async function TicketDetailPage({
       .select("id, quantity, reason, created_at, item:inventory_items(name, unit)")
       .eq("reference_id", ticketId)
       .eq("reference_type", "production_ticket")
-      .eq("movement_type", "waste_pending");
+      .eq("movement_type", "waste_approved");
 
     partialWastes = (wastes ?? []).map((w) => {
       const item = w.item as unknown as { name: string; unit: string } | null;

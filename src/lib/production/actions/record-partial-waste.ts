@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { requireUser, AuthError } from "@/lib/auth/require-user";
+import { registerMovement } from "@/lib/inventory/movements";
 import type { UserRole } from "@/lib/types/database";
 
 type ActionResult<T = void> =
@@ -50,26 +51,19 @@ export async function recordPartialWaste(
     return { ok: false, error: "Solo se pueden registrar mermas en tickets en producción." };
   }
 
-  // Get current stock for stock_after (waste_pending doesn't change stock)
-  const { data: item } = await supabase
-    .from("inventory_items")
-    .select("current_stock")
-    .eq("id", input.itemId)
-    .single();
-
-  const { error } = await supabase.from("inventory_movements").insert({
-    item_id: input.itemId,
-    movement_type: "waste_pending",
-    quantity: input.quantity,
-    reference_type: "production_ticket",
-    reference_id: ticketId,
-    reason: input.reason.trim() || "Merma durante producción",
-    actor_id: currentUser.id,
-    stock_after: (item?.current_stock as number) ?? 0,
-  });
-
-  if (error) {
-    return { ok: false, error: `Error al registrar merma: ${error.message}` };
+  try {
+    await registerMovement({
+      itemId: input.itemId,
+      movementType: "waste_approved",
+      quantity: input.quantity,
+      reason: input.reason.trim() || "Merma durante producción",
+      actorId: currentUser.id,
+      referenceType: "production_ticket",
+      referenceId: ticketId,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Error al registrar merma";
+    return { ok: false, error: msg };
   }
 
   revalidatePath(`/operador/produccion/${ticketId}`);
