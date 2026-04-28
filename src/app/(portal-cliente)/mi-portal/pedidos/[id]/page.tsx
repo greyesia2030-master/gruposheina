@@ -1,0 +1,112 @@
+import { notFound } from "next/navigation";
+import { requireUser } from "@/lib/auth/require-user";
+import { createSupabaseServer } from "@/lib/supabase/server";
+import { Card } from "@/components/ui/card";
+import { OrderStatusBadge } from "@/components/ui/badge";
+import { formatART } from "@/lib/utils/timezone";
+import Link from "next/link";
+import { ChevronLeft } from "lucide-react";
+import type { OrderStatus } from "@/lib/types/database";
+
+const DAY_NAMES: Record<number, string> = {
+  1: "Lunes", 2: "Martes", 3: "Miércoles", 4: "Jueves", 5: "Viernes",
+};
+
+export default async function MiPortalPedidoDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const currentUser = await requireUser();
+  if (!currentUser.organizationId) notFound();
+
+  const supabase = await createSupabaseServer();
+
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, week_label, order_code, status, total_units, created_at, organization_id")
+    .eq("id", id)
+    .eq("organization_id", currentUser.organizationId)
+    .single();
+
+  if (!order) notFound();
+
+  const { data: lines } = await supabase
+    .from("order_lines")
+    .select("day_of_week, display_name, quantity, option_code")
+    .eq("order_id", id)
+    .order("day_of_week")
+    .order("option_code");
+
+  const byDay = (lines ?? []).reduce<Record<number, typeof lines>>((acc, l) => {
+    if (!l) return acc;
+    (acc[l.day_of_week] ??= []).push(l);
+    return acc;
+  }, {});
+
+  const totalQty = (lines ?? []).reduce((s, l) => s + (l?.quantity ?? 0), 0);
+
+  return (
+    <div className="max-w-xl">
+      <Link
+        href="/mi-portal/pedidos"
+        className="flex items-center gap-1 text-sm text-stone-400 hover:text-stone-700 mb-6 transition-colors"
+      >
+        <ChevronLeft className="h-4 w-4" />
+        Mis pedidos
+      </Link>
+
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-heading font-light text-stone-900">{order.week_label}</h1>
+          <p className="text-xs font-mono text-stone-400 mt-1">{order.order_code}</p>
+        </div>
+        <OrderStatusBadge status={order.status as OrderStatus} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        <Card>
+          <div className="p-4 text-center">
+            <p className="text-xs text-stone-400 mb-1">Total viandas</p>
+            <p className="text-2xl font-bold text-stone-900">{totalQty}</p>
+          </div>
+        </Card>
+        <Card>
+          <div className="p-4 text-center">
+            <p className="text-xs text-stone-400 mb-1">Creado</p>
+            <p className="text-sm font-medium text-stone-700">
+              {formatART(order.created_at, "dd MMM yyyy")}
+            </p>
+          </div>
+        </Card>
+      </div>
+
+      {lines && lines.length > 0 ? (
+        <Card>
+          <div className="divide-y divide-stone-100">
+            {Object.entries(byDay)
+              .sort(([a], [b]) => Number(a) - Number(b))
+              .map(([dayNum, dayLines]) => (
+                <div key={dayNum} className="px-4 py-3">
+                  <p className="text-xs font-semibold text-stone-400 uppercase tracking-wide mb-2">
+                    {DAY_NAMES[Number(dayNum)]}
+                  </p>
+                  {(dayLines ?? []).map((l, i) => (
+                    <div key={i} className="flex justify-between text-sm py-0.5">
+                      <span className="text-stone-700">{l?.display_name}</span>
+                      <span className="font-medium text-stone-900">{l?.quantity}×</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+          </div>
+        </Card>
+      ) : (
+        <Card>
+          <p className="p-6 text-center text-stone-400 text-sm">Sin detalle de líneas disponible.</p>
+        </Card>
+      )}
+    </div>
+  );
+}
