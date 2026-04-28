@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/require-user";
-import Link from "next/link";
-import { ShoppingBag, LayoutDashboard, LogOut } from "lucide-react";
-import { createSupabaseServer } from "@/lib/supabase/server";
+import { LogOut } from "lucide-react";
+import { PortalNavLinks } from "./portal-nav";
+
+const CLIENT_ROLES = ["client_admin", "client_user"];
+const QA_ROLES = ["superadmin", "admin"];
 
 async function SignOutButton() {
   return (
@@ -23,13 +25,6 @@ export default async function PortalClienteLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createSupabaseServer();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect("/login");
-
   let currentUser;
   try {
     currentUser = await requireUser();
@@ -37,42 +32,28 @@ export default async function PortalClienteLayout({
     redirect("/login");
   }
 
-  if (currentUser.role !== "client_admin" && currentUser.role !== "client_user") {
+  // Allow client roles + superadmin/admin for QA inspection
+  if (!CLIENT_ROLES.includes(currentUser.role) && !QA_ROLES.includes(currentUser.role)) {
     redirect("/pedidos");
   }
 
   return (
     <div className="flex h-screen bg-stone-50">
-      {/* Sidebar */}
-      <aside className="w-56 bg-white border-r border-stone-200 flex flex-col">
+      <aside className="w-56 shrink-0 bg-white border-r border-stone-200 flex flex-col">
         <div className="px-5 py-5 border-b border-stone-100">
-          <p className="font-heading text-lg font-medium text-stone-900">Mi Portal</p>
-          <p className="text-xs text-stone-400 mt-0.5 truncate">{currentUser.fullName ?? "—"}</p>
+          <p className="text-[10px] uppercase tracking-widest text-stone-400 mb-1">Portal cliente</p>
+          <p className="font-heading text-base font-medium text-stone-900 leading-tight truncate">
+            {currentUser.fullName ?? "—"}
+          </p>
         </div>
 
-        <nav className="flex-1 px-3 py-4 space-y-1">
-          <Link
-            href="/mi-portal"
-            className="flex items-center gap-2.5 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-100 rounded-lg transition-colors"
-          >
-            <LayoutDashboard className="h-4 w-4 text-stone-400" />
-            Inicio
-          </Link>
-          <Link
-            href="/mi-portal/pedidos"
-            className="flex items-center gap-2.5 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-100 rounded-lg transition-colors"
-          >
-            <ShoppingBag className="h-4 w-4 text-stone-400" />
-            Mis pedidos
-          </Link>
-        </nav>
+        <PortalNavLinks />
 
         <div className="px-3 py-4 border-t border-stone-100">
           <SignOutButton />
         </div>
       </aside>
 
-      {/* Main content */}
       <main className="flex-1 overflow-y-auto p-6">
         {children}
       </main>

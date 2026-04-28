@@ -56,7 +56,10 @@ export async function updateSession(request: NextRequest) {
 
     const role = (userRecord?.role as string | undefined) ?? "";
     const pathname = request.nextUrl.pathname;
+
     const isClientRole = role === "client_admin" || role === "client_user";
+    const isOperatorRole = ["operator", "kitchen", "warehouse"].includes(role);
+    const isAdminRole = ["superadmin", "admin"].includes(role);
 
     function roleRedirect(to: string) {
       const url = request.nextUrl.clone();
@@ -66,19 +69,36 @@ export async function updateSession(request: NextRequest) {
       return r;
     }
 
-    // Login → rol correcto
+    // ── Login page: siempre redirigir al portal correcto ─────────────────
     if (pathname.startsWith("/login")) {
-      return roleRedirect(isClientRole ? "/mi-portal" : "/pedidos");
+      if (isClientRole) return roleRedirect("/mi-portal/pedidos");
+      if (isOperatorRole) return roleRedirect("/operador");
+      return roleRedirect("/pedidos");
     }
 
-    // Clientes accediendo rutas admin → mi-portal
-    const adminRoutes = ["/pedidos", "/menus", "/recetas", "/inventario", "/clientes", "/mensajes"];
-    if (isClientRole && adminRoutes.some((r) => pathname.startsWith(r))) {
-      return roleRedirect("/mi-portal");
+    // ── Clientes: allowlist (solo /mi-portal/*, /pedido/*, /login) ───────
+    // Cualquier otra ruta → /mi-portal/pedidos (incluye /, /pedidos, /menus...)
+    if (isClientRole) {
+      const clientAllowed =
+        pathname.startsWith("/mi-portal") ||
+        pathname.startsWith("/pedido/");
+      if (!clientAllowed) {
+        return roleRedirect("/mi-portal/pedidos");
+      }
     }
 
-    // No-clientes accediendo mi-portal → pedidos
-    if (!isClientRole && pathname.startsWith("/mi-portal")) {
+    // ── Operadores: solo /operador/* ─────────────────────────────────────
+    if (isOperatorRole) {
+      const operatorAllowed = pathname.startsWith("/operador");
+      if (!operatorAllowed) {
+        return roleRedirect("/operador");
+      }
+    }
+
+    // ── No-clientes (admin/superadmin) accediendo /mi-portal: permitir ──
+    // Superadmin/admin pueden entrar a /mi-portal para inspección QA.
+    // Operadores NO deben acceder — ya bloqueado arriba.
+    if (!isClientRole && !isAdminRole && pathname.startsWith("/mi-portal")) {
       return roleRedirect("/pedidos");
     }
   }

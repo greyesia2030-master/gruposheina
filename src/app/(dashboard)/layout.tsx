@@ -17,6 +17,21 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
+  // Defense-in-depth: block client roles from admin dashboard
+  const { data: userRecord } = await supabase
+    .from("users")
+    .select("role")
+    .eq("auth_id", user.id)
+    .maybeSingle();
+
+  const role = (userRecord?.role as string | undefined) ?? "";
+  if (role === "client_admin" || role === "client_user") {
+    redirect("/mi-portal/pedidos");
+  }
+  if (["operator", "kitchen", "warehouse"].includes(role)) {
+    redirect("/operador");
+  }
+
   return (
     <div className="flex h-screen bg-background">
       <Sidebar />

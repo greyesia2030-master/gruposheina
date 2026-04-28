@@ -35,8 +35,7 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/pedidos");
-    router.refresh();
+    router.refresh(); // middleware resolves role-based redirect
   }
 
   return (
