@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import Link from "next/link";
 import { formatART } from "@/lib/utils/timezone";
 import type { OrderStatus } from "@/lib/types/database";
+import { NewOrderModal } from "./new-order-modal";
 
 export default async function MiPortalPedidosPage() {
   const currentUser = await requireUser();
@@ -18,9 +19,14 @@ export default async function MiPortalPedidosPage() {
     .order("created_at", { ascending: false })
     .limit(50);
 
+  const canCreate = ["client_admin", "superadmin", "admin"].includes(currentUser.role);
+
   return (
     <div className="max-w-2xl">
-      <h1 className="text-2xl font-heading font-light text-stone-900 mb-6">Mis pedidos</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-heading font-light text-stone-900">Mis pedidos</h1>
+        {canCreate && <NewOrderModal />}
+      </div>
 
       {!orders || orders.length === 0 ? (
         <Card>
