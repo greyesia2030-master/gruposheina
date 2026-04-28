@@ -2,6 +2,10 @@ import { redirect } from "next/navigation";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
+import { RoleGuard } from "@/components/auth/role-guard";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default async function DashboardLayout({
   children,
@@ -34,6 +38,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex h-screen bg-background">
+      <RoleGuard allowed={["superadmin", "admin"]} />
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />

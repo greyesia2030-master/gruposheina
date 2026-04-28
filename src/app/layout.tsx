@@ -31,6 +31,9 @@ export const metadata: Metadata = {
     icon: "/icons/icon-192.png",
     apple: "/icons/icon-192.png",
   },
+  other: {
+    "cache-control": "no-store, no-cache, must-revalidate, max-age=0",
+  },
 };
 
 export const viewport: Viewport = {

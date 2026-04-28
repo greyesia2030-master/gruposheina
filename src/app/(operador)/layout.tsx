@@ -3,6 +3,10 @@ import { requireUser } from "@/lib/auth/require-user";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import Link from "next/link";
 import { ChefHat, Package, LayoutDashboard, LogOut } from "lucide-react";
+import { RoleGuard } from "@/components/auth/role-guard";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 async function SignOutButton() {
   return (
@@ -45,6 +49,7 @@ export default async function OperadorLayout({
 
   return (
     <div className="flex h-screen bg-stone-50">
+      <RoleGuard allowed={["operator", "kitchen", "warehouse", "superadmin", "admin"]} />
       {/* Sidebar */}
       <aside className="w-56 bg-white border-r border-stone-200 flex flex-col">
         <div className="px-5 py-5 border-b border-stone-100">
