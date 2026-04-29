@@ -1,4 +1,4 @@
-import { createSupabaseServer } from "@/lib/supabase/server";
+import { createSupabaseServer, createSupabaseAdmin } from "@/lib/supabase/server";
 import type { UserRole } from "@/lib/types/database";
 
 export class AuthError extends Error {
@@ -35,7 +35,8 @@ export async function requireUser(): Promise<AuthedUser> {
     throw new AuthError("No autenticado", 401);
   }
 
-  const { data: record, error } = await supabase
+  const admin = await createSupabaseAdmin();
+  const { data: record, error } = await admin
     .from("users")
     .select("id, role, organization_id, full_name, is_active")
     .eq("auth_id", authUser.id)

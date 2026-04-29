@@ -24,6 +24,12 @@ type SiteInput = z.input<typeof siteSchema>;
 
 export async function createSite(input: SiteInput) {
   const user = await requireUser();
+  console.log("[createSite] requireUser returned:", {
+    id: user.id,
+    role: user.role,
+    organizationId: user.organizationId,
+    authIdHash: typeof user.id === "string" ? user.id.slice(0, 8) : null,
+  });
   if (!ALLOWED_ROLES.includes(user.role)) return fail("Sin permisos");
   if (!user.organizationId) return fail("Sin organización asignada");
 
