@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { INV_CATEGORY_LABELS } from "@/lib/types/inventory";
 import { CreateItemButton } from "./create-item-button";
-import { Package, AlertTriangle, ArrowUpDown, Search } from "lucide-react";
+import { Package, AlertTriangle, ArrowUpDown, Search, MapPin, Truck } from "lucide-react";
 import type { InventoryItem, InvCategory } from "@/lib/types/database";
 
 const CATEGORY_OPTIONS: { key: string; label: string }[] = [
@@ -206,6 +206,35 @@ export default async function InventarioPage({
           </p>
         </Card>
       )}
+
+      {/* Catálogo maestro — Sitios y Proveedores */}
+      <div className="mt-8">
+        <h2 className="mb-3 text-base font-semibold text-text">Catálogo maestro</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Link href="/inventario/sites">
+            <Card className="cursor-pointer p-4 transition-shadow hover:shadow-md">
+              <div className="flex items-center gap-3">
+                <MapPin className="h-5 w-5 text-primary" />
+                <div>
+                  <p className="text-sm font-medium">Sitios</p>
+                  <p className="text-xs text-text-secondary">Cocinas y depósitos de la organización.</p>
+                </div>
+              </div>
+            </Card>
+          </Link>
+          <Link href="/inventario/proveedores">
+            <Card className="cursor-pointer p-4 transition-shadow hover:shadow-md">
+              <div className="flex items-center gap-3">
+                <Truck className="h-5 w-5 text-primary" />
+                <div>
+                  <p className="text-sm font-medium">Proveedores</p>
+                  <p className="text-xs text-text-secondary">Catálogo de proveedores de insumos.</p>
+                </div>
+              </div>
+            </Card>
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }
