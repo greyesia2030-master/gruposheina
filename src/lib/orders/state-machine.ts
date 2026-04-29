@@ -18,12 +18,18 @@ const TRANSITIONS: Transition[] = [
   { from: 'awaiting_confirmation',  to: 'confirmed' },
   { from: 'partially_filled',       to: 'confirmed' },
   { from: 'confirmed',              to: 'in_production', requiredRoles: ['superadmin', 'admin', 'operator'] },
-  { from: 'in_production',          to: 'delivered',     requiredRoles: ['superadmin', 'admin', 'operator'] },
+  // Logística: in_production → ready_for_delivery lo dispara el trigger DB (trg_check_all_tickets_ready)
+  // El código solo permite la transición, nunca la fuerza manualmente.
+  { from: 'in_production',          to: 'ready_for_delivery' },
+  { from: 'ready_for_delivery',     to: 'out_for_delivery',  requiredRoles: ['superadmin', 'admin', 'operator'] },
+  { from: 'out_for_delivery',       to: 'delivered',         requiredRoles: ['superadmin', 'admin', 'operator'] },
   { from: 'draft',                  to: 'cancelled' },
   { from: 'awaiting_confirmation',  to: 'cancelled' },
   { from: 'partially_filled',       to: 'cancelled' },
   { from: 'confirmed',              to: 'cancelled', requiresCutoff: true },
   { from: 'in_production',          to: 'cancelled', requiredRoles: ['superadmin', 'admin'] },
+  { from: 'ready_for_delivery',     to: 'cancelled', requiredRoles: ['superadmin', 'admin'] },
+  { from: 'out_for_delivery',       to: 'cancelled', requiredRoles: ['superadmin', 'admin'] },
   { from: 'partially_filled',       to: 'awaiting_confirmation' },
   { from: 'awaiting_confirmation',  to: 'draft',    requiredRoles: ['superadmin', 'admin'] },
 ];
@@ -103,6 +109,9 @@ export async function transitionOrder(
       }
     } catch { /* no bloquear la transición si falla el cálculo */ }
   }
+  if (newStatus === 'ready_for_delivery') {
+    updateData.ready_for_delivery_at = new Date().toISOString();
+  }
   if (newStatus === 'delivered') {
     updateData.delivered_at = new Date().toISOString();
   }
@@ -118,10 +127,13 @@ export async function transitionOrder(
 
   // Determinar tipo de evento según la transición
   const eventTypeMap: Record<string, Database['public']['Enums']['event_type']> = {
-    'confirmed':     'confirmed',
-    'cancelled':     'cancelled',
-    'delivered':     'delivered',
-    'in_production': 'confirmed', // el enum no tiene un valor dedicado para "a producción"
+    'confirmed':           'confirmed',
+    'cancelled':           'cancelled',
+    'delivered':           'delivered',
+    'dispatched':          'dispatched',
+    'in_production':       'confirmed',
+    'ready_for_delivery':  'confirmed',
+    'out_for_delivery':    'dispatched',
   };
 
   await createOrderEvent({

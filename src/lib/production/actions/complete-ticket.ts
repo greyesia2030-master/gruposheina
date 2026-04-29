@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { requireUser, AuthError } from "@/lib/auth/require-user";
-import { createOrderEvent } from "@/lib/orders/events";
 import type { UserRole } from "@/lib/types/database";
 
 type ActionResult<T = void> =
@@ -64,32 +63,8 @@ export async function completeProductionTicket(
     })
     .eq("id", ticketId);
 
-  // Auto-deliver order when all tickets are done
-  if (ticket.order_id) {
-    const { data: allTickets } = await supabase
-      .from("production_tickets")
-      .select("id, status")
-      .eq("order_id", ticket.order_id);
-
-    const allDone = (allTickets ?? []).every((t) =>
-      ["ready", "cancelled"].includes(t.status as string)
-    );
-
-    if (allDone) {
-      await supabase
-        .from("orders")
-        .update({ status: "delivered", delivered_at: new Date().toISOString() })
-        .eq("id", ticket.order_id);
-
-      await createOrderEvent({
-        orderId: ticket.order_id as string,
-        eventType: "delivered",
-        actorId: null,
-        actorRole: "system",
-        payload: { trigger: "all_tickets_ready" },
-      });
-    }
-  }
+  // La transición in_production → ready_for_delivery la maneja el trigger DB
+  // trg_check_all_tickets_ready. No hacemos la transición aquí.
 
   revalidatePath("/operador/produccion");
   revalidatePath(`/operador/produccion/${ticketId}`);

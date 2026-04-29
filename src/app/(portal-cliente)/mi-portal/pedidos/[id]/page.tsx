@@ -166,6 +166,36 @@ export default async function MiPortalPedidoDetailPage({
         </div>
       )}
 
+      {/* Listo · coordinando entrega */}
+      {order.status === "ready_for_delivery" && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+          <p className="text-xs font-semibold text-amber-700 mb-0.5">Listo · Coordinando entrega</p>
+          <p className="text-sm text-amber-800">
+            Tu pedido está listo en cocina. Estamos coordinando la entrega y te avisaremos cuando salga.
+          </p>
+        </div>
+      )}
+
+      {/* En camino */}
+      {order.status === "out_for_delivery" && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+          <p className="text-xs font-semibold text-blue-700 mb-0.5">En camino</p>
+          <p className="text-sm text-blue-800">
+            Tu pedido está en camino. Pronto llegará a tu empresa.
+          </p>
+        </div>
+      )}
+
+      {/* Entregado */}
+      {order.status === "delivered" && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
+          <p className="text-xs font-semibold text-green-700 mb-0.5">Entregado</p>
+          <p className="text-sm text-green-800">
+            Tu pedido fue entregado. ¡Buen provecho!
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-3 gap-3 mb-6">
         <Card>
           <div className="p-4 text-center">

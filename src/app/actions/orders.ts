@@ -50,6 +50,8 @@ const ORDER_STATUSES = [
   "draft",
   "confirmed",
   "in_production",
+  "ready_for_delivery",
+  "out_for_delivery",
   "delivered",
   "cancelled",
   "partially_filled",

@@ -3,10 +3,10 @@ export type OrgStatus = "active" | "suspended" | "inactive";
 export type UserRole = "superadmin" | "admin" | "operator" | "client_admin" | "client_user" | "kitchen" | "warehouse";
 export type MenuStatus = "draft" | "published" | "archived";
 export type MenuCategory = "principal" | "alternativa" | "sandwich" | "tarta" | "ensalada" | "veggie" | "especial";
-export type OrderStatus = "draft" | "confirmed" | "in_production" | "delivered" | "cancelled" | "partially_filled" | "awaiting_confirmation";
+export type OrderStatus = "draft" | "confirmed" | "in_production" | "delivered" | "cancelled" | "partially_filled" | "awaiting_confirmation" | "ready_for_delivery" | "out_for_delivery";
 export type OrderSource = "whatsapp_excel" | "whatsapp_bot" | "web_form" | "phone" | "subscription" | "web_form_shared";
 export type PaymentStatus = "pending" | "partial" | "paid" | "overdue";
-export type EventType = "created" | "line_added" | "line_modified" | "line_removed" | "confirmed" | "override" | "cancelled" | "delivered";
+export type EventType = "created" | "line_added" | "line_modified" | "line_removed" | "confirmed" | "override" | "cancelled" | "delivered" | "dispatched";
 export type ActorRole = "client" | "admin" | "system" | "bot";
 export type MovementType = "purchase" | "production_consumption" | "waste" | "adjustment_pos" | "adjustment_neg" | "return" | "transfer_out" | "transfer_in" | "cook_consumption" | "waste_pending" | "waste_approved";
 export type InvCategory = "carnes" | "lacteos" | "verduras" | "secos" | "condimentos" | "envases" | "otros";
@@ -131,7 +131,11 @@ export interface Order {
   payment_status: PaymentStatus;
   confirmed_at: string | null;
   confirmed_by: string | null;
+  ready_for_delivery_at: string | null;
+  dispatched_at: string | null;
+  dispatched_by: string | null;
   delivered_at: string | null;
+  delivered_by: string | null;
   original_file_url: string | null;
   ai_parsing_log: Record<string, unknown> | null;
   // FoodSync v2 additions
@@ -438,6 +442,17 @@ export interface Communication {
   updated_at: string;
 }
 
+export interface UserNotification {
+  id: string;
+  recipient_user_id: string | null;
+  recipient_organization_id: string | null;
+  title: string;
+  body: string;
+  link_url: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
 // Supabase Database type for client typing
 export interface Database {
   public: {
@@ -572,6 +587,11 @@ export interface Database {
         Insert: Omit<Communication, "id" | "created_at" | "updated_at">;
         Update: Partial<Omit<Communication, "id" | "created_at" | "updated_at">>;
       };
+      user_notifications: {
+        Row: UserNotification;
+        Insert: Omit<UserNotification, "id" | "created_at">;
+        Update: Partial<Pick<UserNotification, "read_at">>;
+      };
     };
     Views: {
       [_ in never]: never;
@@ -586,6 +606,7 @@ export interface Database {
       menu_category: MenuCategory;
       order_status: OrderStatus;
       order_source: OrderSource;
+      // (ready_for_delivery, out_for_delivery included via OrderStatus union)
       payment_status: PaymentStatus;
       event_type: EventType;
       actor_role: ActorRole;

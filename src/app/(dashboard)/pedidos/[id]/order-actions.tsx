@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { transitionOrderStatus, returnOrderToClient, approveOrder, sendToProduction } from "@/app/actions/orders";
+import { dispatchOrder } from "@/lib/orders/actions/dispatch-order";
+import { confirmDelivery } from "@/lib/orders/actions/confirm-delivery";
 import type { OrderStatus } from "@/lib/types/database";
 import type { StockCheckResult } from "@/app/actions/orders";
 
@@ -32,9 +34,7 @@ const ACTIONS: Partial<Record<OrderStatus, ActionConfig[]>> = {
   confirmed: [
     { label: "Cancelar",            newStatus: "cancelled",     variant: "danger", requiresCutoff: true },
   ],
-  in_production: [
-    { label: "Marcar entregado",    newStatus: "delivered",     variant: "primary" },
-  ],
+  // in_production → ready_for_delivery lo maneja el trigger DB; no hay botón manual
 };
 
 interface OrderActionsProps {
@@ -54,6 +54,8 @@ export function OrderActions({ orderId, status, isWithinCutoff, stockCheck }: Or
   const [showSendToProductionDialog, setShowSendToProductionDialog] = useState(false);
   const [sendingToProduction, setSendingToProduction] = useState(false);
   const [approvingOrder, setApprovingOrder] = useState(false);
+  const [dispatchingOrder, setDispatchingOrder] = useState(false);
+  const [confirmingDelivery, setConfirmingDelivery] = useState(false);
   const router  = useRouter();
   const { toast } = useToast();
 
@@ -119,6 +121,30 @@ export function OrderActions({ orderId, status, isWithinCutoff, stockCheck }: Or
     router.refresh();
   }
 
+  async function handleDispatchOrder() {
+    setDispatchingOrder(true);
+    const result = await dispatchOrder(orderId);
+    setDispatchingOrder(false);
+    if (!result.ok) {
+      toast(result.error, "error");
+      return;
+    }
+    toast("Pedido marcado como despachado", "success");
+    router.refresh();
+  }
+
+  async function handleConfirmDelivery() {
+    setConfirmingDelivery(true);
+    const result = await confirmDelivery(orderId);
+    setConfirmingDelivery(false);
+    if (!result.ok) {
+      toast(result.error, "error");
+      return;
+    }
+    toast("Entrega confirmada", "success");
+    router.refresh();
+  }
+
   async function handleSendToProduction() {
     setSendingToProduction(true);
     const result = await sendToProduction(orderId);
@@ -178,6 +204,28 @@ export function OrderActions({ orderId, status, isWithinCutoff, stockCheck }: Or
             onClick={() => setShowReturnDialog(true)}
           >
             Devolver al cliente
+          </Button>
+        )}
+        {status === "ready_for_delivery" && (
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={loading !== null || dispatchingOrder}
+            loading={dispatchingOrder}
+            onClick={handleDispatchOrder}
+          >
+            Marcar despachado
+          </Button>
+        )}
+        {status === "out_for_delivery" && (
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={loading !== null || confirmingDelivery}
+            loading={confirmingDelivery}
+            onClick={handleConfirmDelivery}
+          >
+            Confirmar entrega
           </Button>
         )}
       </div>

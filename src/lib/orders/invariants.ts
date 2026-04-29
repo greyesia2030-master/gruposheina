@@ -58,6 +58,24 @@ export function canBeSentToProduction(status: OrderStatus): InvariantResult {
   };
 }
 
+/** ¿se puede marcar como despachado? */
+export function canBeDispatched(status: OrderStatus): InvariantResult {
+  if (status === "ready_for_delivery") return { ok: true };
+  return {
+    ok: false,
+    reason: `El pedido debe estar en "Listo · Coordinando entrega" para ser despachado. Estado actual: "${status}".`,
+  };
+}
+
+/** ¿se puede confirmar entrega? */
+export function canBeConfirmedDelivered(status: OrderStatus): InvariantResult {
+  if (status === "out_for_delivery") return { ok: true };
+  return {
+    ok: false,
+    reason: `El pedido debe estar "En camino" para confirmar entrega. Estado actual: "${status}".`,
+  };
+}
+
 /** ¿el form_token debe estar activo? */
 export function shouldTokenBeActive(status: OrderStatus): boolean {
   return STATUSES_OPEN_FOR_LOAD.includes(status);

@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth/require-user";
-import { createSupabaseServer } from "@/lib/supabase/server";
+import { createSupabaseServer, createSupabaseAdmin } from "@/lib/supabase/server";
 import { Card } from "@/components/ui/card";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
@@ -31,6 +31,7 @@ export default async function TicketDetailPage({
   const { id: ticketId } = await params;
   const currentUser = await requireUser();
   const supabase = await createSupabaseServer();
+  const db = await createSupabaseAdmin();
 
   const { data: ticket } = await supabase
     .from("production_tickets")
@@ -81,15 +82,15 @@ export default async function TicketDetailPage({
 
   if (ticket.recipe_version_id) {
     const [rvRes, ingRes] = await Promise.all([
-      supabase
+      db
         .from("recipe_versions")
         .select("portions_yield, cost_per_portion")
         .eq("id", ticket.recipe_version_id)
         .single(),
-      supabase
+      db
         .from("recipe_ingredients")
         .select(
-          "id, inventory_item_id, quantity, unit, ingredient:inventory_items(name, unit, current_stock)"
+          "id, inventory_item_id, quantity, unit, inventory_item:inventory_items(id, name, unit, current_stock)"
         )
         .eq("recipe_version_id", ticket.recipe_version_id),
     ]);
@@ -99,7 +100,8 @@ export default async function TicketDetailPage({
     factor = ((ticket.quantity_target as number) || 0) / portionsYield;
 
     ingredients = (ingRes.data ?? []).map((ing) => {
-      const item = ing.ingredient as unknown as {
+      const item = ing.inventory_item as unknown as {
+        id: string;
         name: string;
         unit: string;
         current_stock: number;
@@ -128,7 +130,7 @@ export default async function TicketDetailPage({
   let consumedLots: ConsumedLot[] = [];
 
   if (["in_progress", "ready"].includes(status)) {
-    const { data: consumptions } = await supabase
+    const { data: consumptions } = await db
       .from("production_lot_consumption")
       .select(
         "id, lot_id, quantity_consumed, unit, lot:inventory_lots(lot_code, item:inventory_items(name))"
@@ -163,7 +165,7 @@ export default async function TicketDetailPage({
   let partialWastes: PartialWaste[] = [];
 
   if (["in_progress", "ready"].includes(status)) {
-    const { data: wastes } = await supabase
+    const { data: wastes } = await db
       .from("inventory_movements")
       .select("id, quantity, reason, created_at, item:inventory_items(name, unit)")
       .eq("reference_id", ticketId)
@@ -256,12 +258,12 @@ export default async function TicketDetailPage({
       {/* Recipe section */}
       {ticket.recipe_version_id ? (
         <div className="mb-6">
-          <h2 className="text-sm font-semibold text-stone-500 uppercase tracking-wide mb-3">
+          <h2 className="text-sm font-semibold text-stone-500 uppercase tracking-wide mb-1">
             Ingredientes necesarios
           </h2>
           <p className="text-xs text-stone-400 mb-2">
-            {portionsYield} porciones × {Math.ceil(factor * 10) / 10} batches ={" "}
-            {ticket.quantity_target as number} viandas · Costo estimado:{" "}
+            Para este ticket ({ticket.quantity_target as number} viandas ·{" "}
+            {Math.ceil(factor * 10) / 10} × batch de {portionsYield} porciones) · Costo estimado:{" "}
             ${totalCost.toLocaleString("es-AR")}
           </p>
           <Card>

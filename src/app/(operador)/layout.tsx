@@ -7,6 +7,7 @@ import Link from "next/link";
 import { ChefHat, Package, LayoutDashboard } from "lucide-react";
 import { RoleGuard } from "@/components/auth/role-guard";
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 
 const OPERATOR_ROLES = ["operator", "kitchen", "warehouse", "superadmin", "admin"];
 
@@ -61,12 +62,15 @@ export default async function OperadorLayout({
         </nav>
 
         <div className="px-3 py-4 border-t border-stone-100">
-          <Link
-            href="/pedidos"
-            className="flex items-center gap-2 px-3 py-2 text-xs text-stone-400 hover:text-stone-600 transition-colors mb-1"
-          >
-            ← Panel completo
-          </Link>
+          <div className="flex items-center justify-between px-3 mb-2">
+            <Link
+              href="/pedidos"
+              className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
+            >
+              ← Panel completo
+            </Link>
+            <NotificationBell userId={currentUser.id} />
+          </div>
           <SignOutButton />
         </div>
       </aside>

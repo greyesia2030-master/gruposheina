@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth/require-user";
 import { PortalNavLinks } from "./portal-nav";
 import { RoleGuard } from "@/components/auth/role-guard";
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -40,7 +41,13 @@ export default async function PortalClienteLayout({
 
         <PortalNavLinks />
 
-        <div className="px-3 py-4 border-t border-stone-100">
+        <div className="px-3 py-4 border-t border-stone-100 space-y-2">
+          <div className="flex justify-center">
+            <NotificationBell
+              userId={currentUser.id}
+              organizationId={currentUser.organizationId ?? null}
+            />
+          </div>
           <SignOutButton />
         </div>
       </aside>
