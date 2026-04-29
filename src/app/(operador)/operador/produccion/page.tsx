@@ -17,14 +17,14 @@ const DAY_NAMES: Record<string, string> = {
 
 const STATUS_CONFIG: Record<
   ProductionTicketStatus,
-  { label: string; dot: string; bg: string; border: string }
+  { label: string; dot: string; bg: string; border: string; leftBorder: string }
 > = {
-  pending:     { label: "Pendiente",     dot: "bg-amber-400",  bg: "bg-amber-50",  border: "border-amber-200" },
-  in_progress: { label: "En producción", dot: "bg-blue-500",   bg: "bg-blue-50",   border: "border-blue-200"  },
-  paused:      { label: "Pausado",       dot: "bg-stone-400",  bg: "bg-stone-50",  border: "border-stone-200" },
-  ready:       { label: "Listo",         dot: "bg-green-500",  bg: "bg-green-50",  border: "border-green-200" },
-  blocked:     { label: "Bloqueado",     dot: "bg-red-500",    bg: "bg-red-50",    border: "border-red-200"   },
-  cancelled:   { label: "Cancelado",     dot: "bg-stone-300",  bg: "bg-stone-50",  border: "border-stone-100" },
+  pending:     { label: "Pendiente",     dot: "bg-amber-400",  bg: "bg-amber-50",  border: "border-stone-200", leftBorder: "border-l-amber-400"   },
+  in_progress: { label: "En producción", dot: "bg-blue-500",   bg: "bg-blue-50",   border: "border-stone-200", leftBorder: "border-l-sheina-500"  },
+  paused:      { label: "Pausado",       dot: "bg-stone-400",  bg: "bg-stone-50",  border: "border-stone-200", leftBorder: "border-l-stone-400"   },
+  ready:       { label: "Listo",         dot: "bg-green-500",  bg: "bg-green-50",  border: "border-stone-200", leftBorder: "border-l-emerald-500" },
+  blocked:     { label: "Bloqueado",     dot: "bg-red-500",    bg: "bg-red-50",    border: "border-stone-200", leftBorder: "border-l-red-500"     },
+  cancelled:   { label: "Cancelado",     dot: "bg-stone-300",  bg: "bg-stone-50",  border: "border-stone-100", leftBorder: "border-l-stone-300"   },
 };
 
 export default async function OperadorProduccionPage() {
@@ -121,7 +121,7 @@ export default async function OperadorProduccionPage() {
                     return (
                       <Link key={ticket.id} href={`/operador/produccion/${ticket.id}`}>
                         <Card
-                          className={`hover:border-[#D4622B]/40 transition-colors cursor-pointer ${cfg.border}`}
+                          className={`hover:shadow-soft transition-all cursor-pointer border-l-4 ${cfg.leftBorder} ${cfg.border}`}
                         >
                           <div className="flex items-center justify-between px-4 py-3">
                             <div className="min-w-0 flex-1">

@@ -42,7 +42,7 @@ export default async function InventarioProveedoresPage() {
             <Card>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wide text-text-secondary">
+                  <tr className="bg-stone-50 border-b border-stone-200 text-left text-xs font-medium uppercase tracking-wide text-stone-500">
                     <th className="px-4 py-3">Nombre</th>
                     <th className="px-4 py-3">Contacto</th>
                     <th className="px-4 py-3">CUIT</th>
@@ -52,7 +52,7 @@ export default async function InventarioProveedoresPage() {
                 </thead>
                 <tbody>
                   {suppliers.map((s) => (
-                    <tr key={s.id} className="border-b border-border last:border-0 hover:bg-surface-hover">
+                    <tr key={s.id} className="border-b border-stone-100 last:border-0 hover:bg-sheina-50/40 transition-colors">
                       <td className="px-4 py-3 font-medium">{s.name}</td>
                       <td className="px-4 py-3 text-text-secondary">
                         <div>{s.contact_name ?? "—"}</div>

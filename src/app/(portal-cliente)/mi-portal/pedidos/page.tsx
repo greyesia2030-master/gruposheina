@@ -57,7 +57,7 @@ export default async function MiPortalPedidosPage() {
             );
             return (
               <Link key={order.id} href={`/mi-portal/pedidos/${order.id}`}>
-                <Card className="hover:border-[#D4622B]/40 transition-colors cursor-pointer">
+                <Card className="hover:border-sheina-600/40 hover:shadow-soft transition-all duration-200 cursor-pointer">
                   <div className="flex items-center justify-between gap-3 px-4 py-3">
                     <div className="min-w-0">
                       <p className="font-medium text-stone-900 text-sm truncate">{order.week_label}</p>
@@ -67,7 +67,7 @@ export default async function MiPortalPedidosPage() {
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       {cutoffLabel && (
-                        <p className="hidden sm:block text-xs text-[#D4622B] font-medium">{cutoffLabel}</p>
+                        <p className="hidden sm:block text-xs text-sheina-600 font-medium">{cutoffLabel}</p>
                       )}
                       <p className="hidden sm:block text-xs font-mono text-stone-400">{order.order_code}</p>
                       <OrderStatusBadge status={order.status as OrderStatus} />

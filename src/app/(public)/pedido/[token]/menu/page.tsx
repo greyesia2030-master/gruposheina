@@ -196,8 +196,8 @@ export default function MenuPage() {
               onClick={() => setSelectedDay(day)}
               className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
                 selectedDay === day
-                  ? "bg-[#D4622B] text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  ? "bg-sheina-600 text-white shadow-soft"
+                  : "bg-stone-100 text-stone-600 hover:bg-stone-200"
               }`}
             >
               {DAY_NAMES[day]}
@@ -224,7 +224,7 @@ export default function MenuPage() {
               return (
                 <div
                   key={item.id}
-                  className="bg-white border rounded-xl p-4 flex items-center gap-4 shadow-sm"
+                  className="bg-white border border-stone-200 rounded-xl p-4 flex items-center gap-4 shadow-soft hover:shadow-lift transition-all duration-200"
                 >
                   {item.photo_url && (
                     <img
@@ -241,7 +241,7 @@ export default function MenuPage() {
                       </p>
                       <button
                         onClick={() => setDetailItem(item)}
-                        className="shrink-0 mt-0.5 text-gray-300 hover:text-[#D4622B] transition-colors"
+                        className="shrink-0 mt-0.5 text-stone-300 hover:text-sheina-600 transition-colors"
                         aria-label="Ver detalle"
                         title="Ver detalle"
                       >
@@ -259,7 +259,7 @@ export default function MenuPage() {
                         </svg>
                       </button>
                     </div>
-                    <p className="text-xs text-gray-400 mt-0.5 capitalize">{item.category}</p>
+                    <p className="text-xs text-stone-400 mt-0.5 capitalize">{item.category}</p>
                     {item.calories_kcal && (
                       <p className="text-xs text-gray-400">{item.calories_kcal} kcal</p>
                     )}
@@ -287,7 +287,7 @@ export default function MenuPage() {
           </span>
           <button
             onClick={() => setShowCart(true)}
-            className="bg-[#D4622B] text-white px-5 py-2 rounded-lg text-sm font-medium"
+            className="bg-sheina-600 hover:bg-sheina-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-soft transition-all active:scale-[0.98]"
           >
             Ver carrito →
           </button>

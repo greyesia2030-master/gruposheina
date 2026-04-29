@@ -48,20 +48,20 @@ export default async function ClientesPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border text-left text-text-secondary">
-                  <th className="px-4 py-3 font-medium">Nombre</th>
-                  <th className="px-4 py-3 font-medium">CUIT</th>
-                  <th className="px-4 py-3 font-medium">Teléfono</th>
-                  <th className="px-4 py-3 font-medium">Corte</th>
-                  <th className="px-4 py-3 text-center font-medium">Pedidos activos</th>
-                  <th className="px-4 py-3 font-medium">Estado</th>
+                <tr className="bg-stone-50 border-b border-stone-200 text-left text-xs font-medium uppercase tracking-wide text-stone-500">
+                  <th className="px-4 py-3">Nombre</th>
+                  <th className="px-4 py-3">CUIT</th>
+                  <th className="px-4 py-3">Teléfono</th>
+                  <th className="px-4 py-3">Corte</th>
+                  <th className="px-4 py-3 text-center">Pedidos activos</th>
+                  <th className="px-4 py-3">Estado</th>
                 </tr>
               </thead>
               <tbody>
                 {orgs.map((org) => {
                   const count = activeOrderCount[org.id] ?? 0;
                   return (
-                    <ClickableRow key={org.id} href={`/clientes/${org.id}`} className="border-b border-border last:border-0 hover:bg-surface-hover">
+                    <ClickableRow key={org.id} href={`/clientes/${org.id}`} className="border-b border-stone-100 last:border-0 hover:bg-sheina-50/40 transition-colors">
                       <td className="px-4 py-3 font-medium">{org.name}</td>
                       <td className="px-4 py-3 text-text-secondary">{org.cuit ?? "—"}</td>
                       <td className="px-4 py-3 font-mono text-text-secondary">{org.contact_phone ?? "—"}</td>

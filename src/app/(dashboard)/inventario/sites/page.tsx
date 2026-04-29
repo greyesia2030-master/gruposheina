@@ -49,7 +49,7 @@ export default async function InventarioSitesPage() {
             <Card>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border text-left text-xs font-medium uppercase tracking-wide text-text-secondary">
+                  <tr className="bg-stone-50 border-b border-stone-200 text-left text-xs font-medium uppercase tracking-wide text-stone-500">
                     <th className="px-4 py-3">Nombre</th>
                     <th className="px-4 py-3">Tipo</th>
                     <th className="px-4 py-3">Dirección</th>
@@ -59,7 +59,7 @@ export default async function InventarioSitesPage() {
                 </thead>
                 <tbody>
                   {sites.map((site) => (
-                    <tr key={site.id} className="border-b border-border last:border-0 hover:bg-surface-hover">
+                    <tr key={site.id} className="border-b border-stone-100 last:border-0 hover:bg-sheina-50/40 transition-colors">
                       <td className="px-4 py-3 font-medium">{site.name}</td>
                       <td className="px-4 py-3 text-text-secondary">{SITE_TYPE_LABELS[site.site_type] ?? site.site_type}</td>
                       <td className="px-4 py-3 text-text-secondary">{site.address ?? "—"}</td>

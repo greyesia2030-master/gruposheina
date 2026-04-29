@@ -197,23 +197,23 @@ export default async function MiPortalPedidoDetailPage({
       )}
 
       <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-6">
-        <Card>
+        <Card className="shadow-soft">
           <div className="p-4 text-center">
-            <p className="text-xs text-stone-400 mb-1">Total viandas</p>
-            <p className="text-2xl font-bold text-stone-900">{totalQty}</p>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-stone-400 mb-1">Viandas</p>
+            <p className="font-heading text-2xl font-light text-stone-900">{totalQty}</p>
           </div>
         </Card>
-        <Card>
+        <Card className="shadow-soft">
           <div className="p-4 text-center">
-            <p className="text-xs text-stone-400 mb-1">Creado</p>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-stone-400 mb-1">Creado</p>
             <p className="text-sm font-medium text-stone-700">
               {formatART(order.created_at, "dd MMM yyyy")}
             </p>
           </div>
         </Card>
-        <Card>
+        <Card className="shadow-soft">
           <div className="p-4 text-center">
-            <p className="text-xs text-stone-400 mb-1">Cierra</p>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-stone-400 mb-1">Cierra</p>
             {(order as Record<string, unknown>).custom_cutoff_at ? (
               <>
                 <p className="text-sm font-medium text-stone-700">
@@ -222,7 +222,7 @@ export default async function MiPortalPedidoDetailPage({
                     "dd MMM HH:mm"
                   )}
                 </p>
-                <p className="text-xs text-[#D4622B] mt-0.5">
+                <p className="text-xs text-sheina-600 mt-0.5">
                   {cutoffRelativeLabel((order as Record<string, unknown>).custom_cutoff_at as string)}
                 </p>
               </>

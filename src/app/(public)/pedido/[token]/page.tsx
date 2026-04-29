@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageLoading } from "@/components/ui/loading";
 import { useToast } from "@/components/ui/toast";
+import { IMAGES } from "@/lib/design/images";
 
 const ERROR_MESSAGES: Record<string, string> = {
   expired: "Este link venció. Pedí uno nuevo al administrador.",
@@ -140,9 +141,33 @@ export default function SharedOrderPage({ params }: { params: Promise<{ token: s
     !submitting;
 
   return (
-    <div className="max-w-md mx-auto py-10 px-4">
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Armá tu pedido</h1>
-      <p className="text-sm text-gray-500 mb-8">
+    <>
+      {/* Food hero */}
+      <div
+        className="relative h-40 sm:h-48 overflow-hidden"
+        style={{
+          backgroundImage: `url("${IMAGES.foodPrep}")`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
+      >
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "linear-gradient(to bottom, rgba(26,24,21,0.6) 0%, rgba(107,44,17,0.35) 100%)",
+          }}
+        />
+        <div className="relative z-10 flex flex-col items-center justify-center h-full text-white px-4">
+          <p className="text-[10px] uppercase tracking-[0.35em] text-amber-100/70 mb-1">
+            Grupo Sheina
+          </p>
+          <p className="font-heading text-xl font-light">Armá tu pedido</p>
+        </div>
+      </div>
+
+    <div className="max-w-md mx-auto py-8 px-4">
+      <p className="text-sm text-stone-500 mb-8">
         Elegí tu sector{usingPicker ? " y seleccioná tu nombre" : " e ingresá tu nombre"} para empezar.
       </p>
 
@@ -273,7 +298,7 @@ export default function SharedOrderPage({ params }: { params: Promise<{ token: s
 
       <Button
         size="lg"
-        className="w-full"
+        className="w-full bg-sheina-600 hover:bg-sheina-700 active:scale-[0.98] transition-all"
         onClick={handleSubmit}
         disabled={!canSubmit || countdown === "00:00:00"}
         loading={submitting}
@@ -281,5 +306,6 @@ export default function SharedOrderPage({ params }: { params: Promise<{ token: s
         Empezar a cargar
       </Button>
     </div>
+    </>
   );
 }

@@ -154,13 +154,13 @@ export default async function InventarioPage({
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border text-left text-text-secondary">
-                  <th className="px-4 py-3 font-medium">Nombre</th>
-                  <th className="px-4 py-3 font-medium">Categoría</th>
-                  <th className="px-4 py-3 font-medium text-right">Stock</th>
-                  <th className="px-4 py-3 font-medium">Unidad</th>
-                  <th className="px-4 py-3 font-medium text-right">Costo/ud</th>
-                  <th className="px-4 py-3 font-medium">Proveedor</th>
+                <tr className="bg-stone-50 border-b border-stone-200 text-left text-xs font-medium uppercase tracking-wide text-stone-500">
+                  <th className="px-4 py-3">Nombre</th>
+                  <th className="px-4 py-3">Categoría</th>
+                  <th className="px-4 py-3 text-right">Stock</th>
+                  <th className="px-4 py-3">Unidad</th>
+                  <th className="px-4 py-3 text-right">Costo/ud</th>
+                  <th className="px-4 py-3">Proveedor</th>
                 </tr>
               </thead>
               <tbody>
@@ -169,7 +169,7 @@ export default async function InventarioPage({
                   return (
                     <tr
                       key={item.id}
-                      className={`border-b border-border last:border-0 hover:bg-surface-hover ${isLow ? "bg-red-50/50" : ""}`}
+                      className={`border-b border-stone-100 last:border-0 hover:bg-sheina-50/40 transition-colors ${isLow ? "bg-red-50/60" : ""}`}
                     >
                       <td className="px-4 py-3">
                         <Link href={`/inventario/${item.id}`} className="font-medium hover:text-primary">

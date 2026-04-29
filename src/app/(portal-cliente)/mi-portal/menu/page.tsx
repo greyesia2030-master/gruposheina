@@ -62,26 +62,33 @@ export default async function MenuActivoPage() {
               {dayItems.map((item) => (
                 <div
                   key={item.id}
-                  className="bg-white rounded-xl overflow-hidden border border-stone-200"
+                  className="bg-white rounded-xl overflow-hidden border border-stone-200 shadow-soft transition-all duration-300 hover:shadow-lift hover:-translate-y-0.5 group"
                 >
-                  {item.photo_url ? (
-                    <img
-                      src={item.photo_url}
-                      alt={item.display_name}
-                      className="w-full h-36 object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-36 bg-gradient-to-br from-amber-50 to-stone-100 flex items-center justify-center">
-                      <span className="font-heading italic text-4xl text-stone-300">
-                        {item.option_code}
-                      </span>
-                    </div>
-                  )}
+                  <div className="relative overflow-hidden">
+                    {item.photo_url ? (
+                      <img
+                        src={item.photo_url}
+                        alt={item.display_name}
+                        className="w-full h-36 object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="w-full h-36 bg-gradient-to-br from-sheina-50 to-stone-100 flex items-center justify-center">
+                        <span className="font-heading italic text-4xl text-stone-300">
+                          {item.option_code}
+                        </span>
+                      </div>
+                    )}
+                    <span className="absolute top-2 left-2 text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-semibold bg-sheina-600 text-white">
+                      {item.option_code}
+                    </span>
+                  </div>
                   <div className="p-3">
-                    <p className="text-[10px] uppercase tracking-widest text-stone-400 mb-0.5">
-                      Opción {item.option_code}
+                    <p className="font-heading text-sm font-medium text-stone-900 leading-tight">
+                      {item.display_name}
                     </p>
-                    <p className="text-sm font-medium text-stone-900">{item.display_name}</p>
+                    <p className="text-[10px] uppercase tracking-widest text-stone-400 mt-0.5 capitalize">
+                      {item.category}
+                    </p>
                   </div>
                 </div>
               ))}

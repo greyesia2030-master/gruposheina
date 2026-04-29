@@ -38,25 +38,25 @@ export default function MensajesPage() {
 
       <div className="max-w-4xl">
         {/* Hero */}
-        <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-8 mb-6">
+        <div className="bg-gradient-to-br from-sheina-50 to-amber-50 border border-sheina-100 rounded-2xl p-8 mb-6">
           <div className="flex items-start gap-4">
-            <div className="bg-[#D4622B] rounded-xl p-3 flex-shrink-0">
+            <div className="bg-sheina-600 rounded-xl p-3 flex-shrink-0 shadow-soft">
               <MessageSquare className="h-6 w-6 text-white" />
             </div>
             <div className="flex-1">
-              <div className="inline-flex items-center gap-1.5 bg-amber-200 text-amber-900 text-xs font-medium px-2.5 py-1 rounded-full mb-3">
+              <div className="inline-flex items-center gap-1.5 bg-sheina-100 text-sheina-800 text-xs font-medium px-2.5 py-1 rounded-full mb-3">
                 <Sparkles className="h-3 w-3" />
                 Módulo en preparación
               </div>
-              <h2 className="text-xl font-bold text-stone-900 mb-2">
+              <h2 className="font-heading text-xl font-light text-stone-900 mb-2">
                 Centro de mensajes
               </h2>
-              <p className="text-sm text-stone-700 mb-4">
+              <p className="text-sm text-stone-600 mb-4">
                 Próximamente vas a poder gestionar todas las comunicaciones con tus clientes
                 desde un solo lugar: WhatsApp, email y SMS unificados con respuestas automáticas,
                 plantillas y asignaciones por equipo.
               </p>
-              <p className="text-xs text-stone-600">
+              <p className="text-xs text-stone-500">
                 Disponible en la próxima fase del roadmap. Si necesitás priorizar este módulo,
                 contactanos.
               </p>

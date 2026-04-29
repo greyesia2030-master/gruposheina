@@ -111,7 +111,7 @@ export default async function OperadorDashboardPage() {
           ) : (
             <div className="space-y-2">
               {lowStock.map((item) => (
-                <Card key={item.id}>
+                <Card key={item.id} className="border-l-4 border-l-amber-400 border-stone-200">
                   <div className="flex items-center justify-between px-4 py-3">
                     <div>
                       <p className="text-sm font-medium text-stone-900">{item.name}</p>

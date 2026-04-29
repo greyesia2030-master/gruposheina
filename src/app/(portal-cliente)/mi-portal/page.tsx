@@ -57,7 +57,7 @@ export default async function MiPortalPage() {
         <div className="space-y-3">
           {orders.map((order) => (
             <Link key={order.id} href={`/mi-portal/pedidos/${order.id}`}>
-              <Card className="hover:border-[#D4622B]/40 transition-colors cursor-pointer">
+              <Card className="hover:border-sheina-600/40 hover:shadow-soft transition-all duration-200 cursor-pointer">
                 <div className="flex items-center justify-between p-4">
                   <div>
                     <p className="font-medium text-stone-900">{order.week_label}</p>

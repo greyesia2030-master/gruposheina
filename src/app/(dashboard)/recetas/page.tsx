@@ -3,10 +3,10 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { CATEGORY_LABELS, CATEGORY_ORDER } from "@/lib/types/menus";
 import { CreateRecipeButton } from "./create-recipe-button";
+import { RecetasTable, type RecipeTableRow } from "./recetas-table";
 import type { MenuCategory } from "@/lib/types/database";
 import { Search, BookOpen } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -39,6 +39,21 @@ export default async function RecetasPage({
 
   const { data: recipes } = await query;
   const activeCategory = params.category ?? "all";
+
+  const rows: RecipeTableRow[] = (recipes ?? []).map((recipe) => {
+    const ver = Array.isArray(recipe.current_version)
+      ? recipe.current_version[0]
+      : recipe.current_version;
+    return {
+      id: recipe.id,
+      name: recipe.name,
+      category: recipe.category as string,
+      isActive: recipe.is_active,
+      version: ver?.version ?? null,
+      costPerPortion: ver?.cost_per_portion ?? 0,
+      portionsYield: ver?.portions_yield ?? null,
+    };
+  });
 
   return (
     <div>
@@ -84,67 +99,9 @@ export default async function RecetasPage({
         </div>
       </form>
 
-      {recipes && recipes.length > 0 ? (
+      {rows.length > 0 ? (
         <Card>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-text-secondary">
-                  <th className="px-4 py-3 font-medium">Nombre</th>
-                  <th className="px-4 py-3 font-medium">Categoría</th>
-                  <th className="px-4 py-3 font-medium">Versión</th>
-                  <th className="px-4 py-3 font-medium">Rendimiento</th>
-                  <th className="px-4 py-3 text-right font-medium">Costo/porción</th>
-                  <th className="px-4 py-3 font-medium">Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recipes.map((recipe) => {
-                  const version = Array.isArray(recipe.current_version)
-                    ? recipe.current_version[0]
-                    : recipe.current_version;
-                  return (
-                    <tr
-                      key={recipe.id}
-                      className="cursor-pointer border-b border-border last:border-0 hover:bg-surface-hover"
-                    >
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/recetas/${recipe.id}`}
-                          className="font-medium hover:text-primary"
-                        >
-                          {recipe.name}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge variant="primary">
-                          {CATEGORY_LABELS[recipe.category as MenuCategory] ?? recipe.category}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="font-mono text-xs font-semibold">
-                          v{version?.version ?? "—"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-text-secondary">
-                        {version?.portions_yield ?? "—"} porciones
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold text-primary">
-                        ${(version?.cost_per_portion ?? 0).toLocaleString("es-AR", {
-                          minimumFractionDigits: 2,
-                        })}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge variant={recipe.is_active ? "success" : "default"}>
-                          {recipe.is_active ? "Activa" : "Inactiva"}
-                        </Badge>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <RecetasTable rows={rows} />
         </Card>
       ) : (
         <EmptyState

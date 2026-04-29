@@ -120,21 +120,21 @@ export default async function PedidosPage({
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-border text-left text-text-secondary">
-                  <th className="px-4 py-3 font-medium">Código</th>
-                  <th className="px-4 py-3 font-medium">Cliente</th>
-                  <th className="px-4 py-3 font-medium">Semana</th>
-                  <th className="px-4 py-3 font-medium">Estado</th>
-                  <th className="px-4 py-3 text-right font-medium">Viandas</th>
+                <tr className="bg-stone-50 border-b border-stone-200 text-left text-xs font-medium uppercase tracking-wide text-stone-500">
+                  <th className="px-4 py-3">Código</th>
+                  <th className="px-4 py-3">Cliente</th>
+                  <th className="px-4 py-3">Semana</th>
+                  <th className="px-4 py-3">Estado</th>
+                  <th className="px-4 py-3 text-right">Viandas</th>
                   {showFinancials && (
                     <>
-                      <th className="px-4 py-3 text-right font-medium">Monto</th>
-                      <th className="px-4 py-3 font-medium">Pago</th>
+                      <th className="px-4 py-3 text-right">Monto</th>
+                      <th className="px-4 py-3">Pago</th>
                     </>
                   )}
-                  <th className="px-4 py-3 font-medium">Fuente</th>
-                  <th className="px-4 py-3 font-medium">Fecha</th>
-                  <th className="px-4 py-3 font-medium">Acciones</th>
+                  <th className="px-4 py-3">Fuente</th>
+                  <th className="px-4 py-3">Fecha</th>
+                  <th className="px-4 py-3">Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -145,7 +145,7 @@ export default async function PedidosPage({
                     <ClickableRow
                       key={order.id}
                       href={`/pedidos/${order.id}`}
-                      className="border-b border-border last:border-0 hover:bg-surface-hover"
+                      className="border-b border-stone-100 last:border-0 hover:bg-sheina-50/40 transition-colors"
                     >
                       <td className="px-4 py-3">
                         <span className="font-mono text-xs text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">

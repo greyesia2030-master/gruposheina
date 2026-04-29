@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/auth/require-user";
+import { LiveClock } from "@/components/dashboard/live-clock";
 import { DashboardKPIs } from "@/components/dashboard/kpis";
 import { DashboardChartViandasPorDia } from "@/components/dashboard/chart-viandas-dia";
 import { DashboardChartEstados } from "@/components/dashboard/chart-estados";
@@ -22,11 +23,6 @@ export default async function DashboardPage() {
   );
   const hour = arNow.getHours();
   const greeting = hour < 12 ? "Buen día" : hour < 20 ? "Buenas tardes" : "Buenas noches";
-  const dateLabel = arNow.toLocaleDateString("es-AR", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  });
 
   const [ordersRes, linesRes, ticketsRes, wastePendingRes] = await Promise.all([
     supabase
@@ -146,8 +142,8 @@ export default async function DashboardPage() {
             Resumen operativo de Grupo Sheina — pedidos activos, viandas comprometidas y métricas semanales.
           </p>
         </div>
-        <div className="hidden sm:flex items-center gap-1.5 shrink-0 px-3 py-1.5 rounded-full bg-stone-100 text-stone-600 text-xs font-medium capitalize mt-1">
-          {dateLabel}
+        <div className="hidden sm:block shrink-0 mt-1">
+          <LiveClock />
         </div>
       </div>
 
