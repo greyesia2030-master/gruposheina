@@ -15,8 +15,30 @@
   --color-error: #EF4444;
   --color-info: #3B82F6;
 
+  /* Sheina palette */
+  --color-sheina-50: #fdf6f0;
+  --color-sheina-100: #fbeadb;
+  --color-sheina-200: #f5cfa7;
+  --color-sheina-300: #eeae73;
+  --color-sheina-400: #e58946;
+  --color-sheina-500: #d96b29;
+  --color-sheina-600: #bb521c;
+  --color-sheina-700: #933d18;
+  --color-sheina-800: #6b2c11;
+  --color-sheina-900: #451c0b;
+
+  /* Ink neutrals */
+  --color-ink-50: #f8f7f5;
+  --color-ink-100: #ebe9e4;
+  --color-ink-900: #1a1815;
+
+  /* Shadows */
+  --shadow-soft: 0 1px 2px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04);
+  --shadow-lift: 0 4px 12px rgba(0,0,0,0.06), 0 16px 48px rgba(217,107,41,0.08);
+
   --font-sans: var(--font-inter), "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-heading: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  --font-serif: var(--font-fraunces), Georgia, serif;
 }
 
 body {

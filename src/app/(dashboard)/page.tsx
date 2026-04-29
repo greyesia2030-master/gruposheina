@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { createSupabaseServer } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/auth/require-user";
 import { DashboardKPIs } from "@/components/dashboard/kpis";
 import { DashboardChartViandasPorDia } from "@/components/dashboard/chart-viandas-dia";
 import { DashboardChartEstados } from "@/components/dashboard/chart-estados";
@@ -12,6 +13,20 @@ import Link from "next/link";
 export default async function DashboardPage() {
   const supabase = await createSupabaseServer();
   const today = new Date().toISOString().slice(0, 10);
+
+  const { fullName } = await requireUser();
+  const firstName = (fullName ?? "").split(" ")[0] || null;
+
+  const arNow = new Date(
+    new Date().toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" })
+  );
+  const hour = arNow.getHours();
+  const greeting = hour < 12 ? "Buen día" : hour < 20 ? "Buenas tardes" : "Buenas noches";
+  const dateLabel = arNow.toLocaleDateString("es-AR", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
 
   const [ordersRes, linesRes, ticketsRes, wastePendingRes] = await Promise.all([
     supabase
@@ -115,16 +130,25 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="mb-2">
-        <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-stone-500 mb-2">
-          Panel general
-        </p>
-        <h1 className="font-heading text-4xl font-light text-stone-900 leading-tight">
-          Buen <em className="italic font-medium text-[#D4622B]">trabajo</em>, seguí así.
-        </h1>
-        <p className="text-sm text-stone-500 mt-2 max-w-xl">
-          Resumen operativo de Grupo Sheina — pedidos activos, viandas comprometidas y métricas semanales.
-        </p>
+      <div className="mb-2 flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-stone-500 mb-2">
+            Panel general
+          </p>
+          <h1 className="font-heading text-4xl font-light text-stone-900 leading-tight">
+            {greeting},{" "}
+            <em className="italic font-medium text-[#D4622B]">
+              {firstName ?? "bienvenido"}
+            </em>
+            .
+          </h1>
+          <p className="text-sm text-stone-500 mt-2 max-w-xl">
+            Resumen operativo de Grupo Sheina — pedidos activos, viandas comprometidas y métricas semanales.
+          </p>
+        </div>
+        <div className="hidden sm:flex items-center gap-1.5 shrink-0 px-3 py-1.5 rounded-full bg-stone-100 text-stone-600 text-xs font-medium capitalize mt-1">
+          {dateLabel}
+        </div>
       </div>
 
       <DashboardKPIs

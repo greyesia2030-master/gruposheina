@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { IMAGES } from "@/lib/design/images";
+import { fadeInUp } from "@/lib/design/motion";
 
 const ERROR_MESSAGES: Record<string, string> = {
   "Invalid login credentials":  "Email o contraseña incorrectos.",
@@ -13,6 +16,9 @@ const ERROR_MESSAGES: Record<string, string> = {
 function translateError(message: string): string {
   return ERROR_MESSAGES[message] ?? "Ocurrió un error. Intentá de nuevo.";
 }
+
+const GRAIN_SVG =
+  "data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E";
 
 export default function LoginPage() {
   const [email, setEmail]       = useState("");
@@ -35,54 +41,77 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/"); // middleware intercepts and redirects by role
+    router.push("/");
   }
 
   return (
-    <main className="min-h-screen grid lg:grid-cols-5 bg-stone-50">
-      {/* Left: hero editorial */}
-      <div className="lg:col-span-3 hidden lg:flex flex-col justify-between p-12 bg-gradient-to-br from-[#D4622B] via-[#c25a26] to-[#a04a1f] text-white relative overflow-hidden">
-        {/* Grain texture overlay */}
+    <main className="min-h-screen flex flex-col lg:flex-row">
+      {/* ── Left: food hero ─────────────────────────────────────────── */}
+      <div
+        className="h-[42vh] lg:h-auto lg:w-[58%] flex flex-col justify-between p-8 lg:p-14 text-white relative overflow-hidden"
+        style={{
+          backgroundImage: `url("${IMAGES.heroLogin}")`,
+          backgroundSize: "cover",
+          backgroundPosition: "center 45%",
+        }}
+      >
+        {/* Gradient overlay */}
         <div
-          className="absolute inset-0 opacity-[0.06] pointer-events-none"
+          className="absolute inset-0 pointer-events-none"
           style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E")`,
+            background:
+              "linear-gradient(135deg, rgba(26,24,21,0.78) 0%, rgba(107,44,17,0.55) 55%, rgba(187,82,28,0.38) 100%)",
           }}
         />
+        {/* Grain texture */}
+        <div
+          className="absolute inset-0 opacity-[0.045] pointer-events-none"
+          style={{ backgroundImage: `url("${GRAIN_SVG}")` }}
+        />
 
+        {/* Top brand */}
         <div className="relative z-10">
-          <p className="text-xs uppercase tracking-[0.3em] text-amber-100/70 mb-3">
-            Sistema de gestión
+          <p className="text-xs uppercase tracking-[0.35em] text-amber-100/60 mb-4 font-medium">
+            Grupo Sheina
           </p>
-          <h1 className="font-heading text-6xl font-light leading-[1.05]">
-            Grupo<br />
-            <em className="italic font-medium">Sheina</em>.
+          <h1 className="font-heading text-3xl lg:text-[3.5rem] font-light leading-[1.05]">
+            Cocina con propósito,
+            <br />
+            <em className="italic font-medium">gestión sin fricción.</em>
           </h1>
         </div>
 
-        <blockquote className="relative z-10 max-w-md">
-          <p className="font-heading italic text-2xl leading-snug text-white/90">
-            &ldquo;La calidad de cada vianda comienza con la trazabilidad de cada insumo.&rdquo;
+        {/* Bottom tagline — desktop only */}
+        <div className="relative z-10 hidden lg:block">
+          <p className="text-sm text-white/55 leading-relaxed max-w-sm">
+            Plataforma integral para gestión de viandas empresariales.
+            <br />
+            Desde el pedido al delivery.
           </p>
-          <footer className="text-sm text-amber-100/70 mt-4 tracking-wide not-italic">
-            — Política de calidad
-          </footer>
-        </blockquote>
+          <p className="text-[10px] text-amber-100/30 mt-5 tracking-[0.3em] uppercase">
+            v2.0 · Buenos Aires
+          </p>
+        </div>
       </div>
 
-      {/* Right: form */}
-      <div className="lg:col-span-2 flex items-center justify-center p-8 min-h-screen lg:min-h-0">
-        <div className="w-full max-w-sm">
-          {/* Mobile logo */}
-          <div className="lg:hidden mb-8 text-center">
-            <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-[#D4622B]/10 mb-3">
-              <span className="text-xl font-bold text-[#D4622B]">S</span>
+      {/* ── Right: form ─────────────────────────────────────────────── */}
+      <div className="flex-1 lg:w-[42%] flex items-center justify-center p-8 bg-sheina-50">
+        <motion.div
+          className="w-full max-w-sm"
+          variants={fadeInUp}
+          initial="hidden"
+          animate="visible"
+        >
+          {/* Logo mark */}
+          <div className="mb-10">
+            <div className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-sheina-600/10 mb-5">
+              <span className="text-lg font-bold text-sheina-600">S</span>
             </div>
-            <p className="text-sm font-medium text-stone-600">Grupo Sheina</p>
+            <h2 className="font-heading text-3xl font-light text-ink-900 mb-1">
+              Ingresá
+            </h2>
+            <p className="text-sm text-stone-500">Sistema de gestión interno</p>
           </div>
-
-          <h2 className="font-heading text-3xl font-light text-stone-900 mb-1">Ingresá</h2>
-          <p className="text-sm text-stone-500 mb-8">Sistema de gestión interno</p>
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-1.5">
@@ -97,7 +126,7 @@ export default function LoginPage() {
                 placeholder="admin@sheina.com"
                 required
                 autoComplete="email"
-                className="w-full rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 placeholder:text-stone-400 outline-none transition-all focus:border-[#D4622B] focus:ring-2 focus:ring-[#D4622B]/15"
+                className="w-full rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 placeholder:text-stone-400 outline-none transition-all focus:border-sheina-500 focus:ring-2 focus:ring-sheina-500/15"
               />
             </div>
 
@@ -113,7 +142,7 @@ export default function LoginPage() {
                 placeholder="••••••••"
                 required
                 autoComplete="current-password"
-                className="w-full rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 placeholder:text-stone-400 outline-none transition-all focus:border-[#D4622B] focus:ring-2 focus:ring-[#D4622B]/15"
+                className="w-full rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-900 placeholder:text-stone-400 outline-none transition-all focus:border-sheina-500 focus:ring-2 focus:ring-sheina-500/15"
               />
               {error && (
                 <p className="text-sm text-red-600 mt-1">{error}</p>
@@ -123,16 +152,16 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-xl bg-[#D4622B] px-4 py-3 text-sm font-semibold text-white transition-all hover:bg-[#b85224] disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full rounded-xl bg-sheina-600 px-4 py-3 text-sm font-semibold text-white transition-all hover:bg-sheina-700 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading ? "Ingresando…" : "Ingresar"}
             </button>
           </form>
 
-          <p className="mt-8 text-center text-xs text-stone-400">
+          <p className="mt-10 text-center text-xs text-stone-400">
             Grupo Sheina &copy; {new Date().getFullYear()}
           </p>
-        </div>
+        </motion.div>
       </div>
     </main>
   );
