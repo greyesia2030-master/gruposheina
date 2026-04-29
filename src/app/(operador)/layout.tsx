@@ -4,7 +4,7 @@ export const revalidate = 0;
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/require-user";
 import Link from "next/link";
-import { ChefHat, Package, LayoutDashboard, Warehouse } from "lucide-react";
+import { ChefHat, Package, LayoutDashboard } from "lucide-react";
 import { RoleGuard } from "@/components/auth/role-guard";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { NotificationBell } from "@/components/notifications/notification-bell";
@@ -60,14 +60,6 @@ export default async function OperadorLayout({
             className="flex items-center gap-2.5 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-100 rounded-lg transition-colors"
           >
             <Package className="h-4 w-4 text-stone-400" />
-            Inventario
-          </Link>
-          {/* CD-1.A.1: añadido warehouse */}
-          <Link
-            href="/operador/almacen"
-            className="flex items-center gap-2.5 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-100 rounded-lg transition-colors"
-          >
-            <Warehouse className="h-4 w-4 text-stone-400" />
             Inventario
           </Link>
         </nav>

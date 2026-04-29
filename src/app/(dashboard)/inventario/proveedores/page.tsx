@@ -6,7 +6,7 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { SupplierForm, ToggleSupplierButton } from "@/app/(operador)/operador/almacen/proveedores/SupplierForm";
+import { SupplierForm, ToggleSupplierButton } from "./SupplierForm";
 import type { Supplier } from "@/lib/types/database";
 
 const ALLOWED_ROLES = ["superadmin", "admin"];

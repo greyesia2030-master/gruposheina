@@ -6,7 +6,7 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { SiteForm, ToggleSiteButton } from "@/app/(operador)/operador/almacen/sites/SiteForm";
+import { SiteForm, ToggleSiteButton } from "./SiteForm";
 import type { Site } from "@/lib/types/database";
 
 const ALLOWED_ROLES = ["superadmin", "admin"];
