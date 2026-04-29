@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth/require-user";
 
 const ALLOWED_ROLES = ["warehouse", "admin", "superadmin"];
 const REVALIDATE = "/operador/almacen/proveedores";
+const SHEINA_ORG_ID = "5a130ecc-6016-467e-bcb8-42f0b4b70d22";
 
 function fail(error: string) { return { ok: false as const, error }; }
 function okVoid() { return { ok: true as const }; }
@@ -23,10 +24,18 @@ const supplierSchema = z.object({
 
 type SupplierInput = z.input<typeof supplierSchema>;
 
+function resolveOrgId(user: { organizationId: string | null; role: string }): string | null {
+  if (user.organizationId) return user.organizationId;
+  if (user.role === "superadmin" || user.role === "admin") return SHEINA_ORG_ID;
+  return null;
+}
+
 export async function createSupplier(input: SupplierInput) {
   const user = await requireUser();
   if (!ALLOWED_ROLES.includes(user.role)) return fail("Sin permisos");
-  if (!user.organizationId) return fail("Sin organización asignada");
+
+  const effectiveOrgId = resolveOrgId(user);
+  if (!effectiveOrgId) return fail("Sin organización asignada");
 
   const parsed = supplierSchema.safeParse(input);
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Datos inválidos");
@@ -38,7 +47,7 @@ export async function createSupplier(input: SupplierInput) {
     .insert({
       ...d,
       contact_email: d.contact_email || null,
-      organization_id: user.organizationId,
+      organization_id: effectiveOrgId,
     })
     .select("id")
     .single();

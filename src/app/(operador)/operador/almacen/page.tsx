@@ -15,7 +15,7 @@ export default async function AlmacenPage() {
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-2xl font-heading font-light text-stone-900 mb-1">Almacén</h1>
+      <h1 className="text-2xl font-heading font-light text-stone-900 mb-1">Inventario</h1>
       <p className="text-sm text-stone-400 mb-8">
         Gestión de sitios, proveedores, recepciones y lotes.
       </p>

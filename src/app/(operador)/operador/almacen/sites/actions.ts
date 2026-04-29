@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth/require-user";
 
 const ALLOWED_ROLES = ["warehouse", "admin", "superadmin"];
 const REVALIDATE = "/operador/almacen/sites";
+const SHEINA_ORG_ID = "5a130ecc-6016-467e-bcb8-42f0b4b70d22";
 
 function fail(error: string) { return { ok: false as const, error }; }
 function okVoid() { return { ok: true as const }; }
@@ -22,16 +23,18 @@ const siteSchema = z.object({
 
 type SiteInput = z.input<typeof siteSchema>;
 
+function resolveOrgId(user: { organizationId: string | null; role: string }): string | null {
+  if (user.organizationId) return user.organizationId;
+  if (user.role === "superadmin" || user.role === "admin") return SHEINA_ORG_ID;
+  return null;
+}
+
 export async function createSite(input: SiteInput) {
   const user = await requireUser();
-  console.log("[createSite] requireUser returned:", {
-    id: user.id,
-    role: user.role,
-    organizationId: user.organizationId,
-    authIdHash: typeof user.id === "string" ? user.id.slice(0, 8) : null,
-  });
   if (!ALLOWED_ROLES.includes(user.role)) return fail("Sin permisos");
-  if (!user.organizationId) return fail("Sin organización asignada");
+
+  const effectiveOrgId = resolveOrgId(user);
+  if (!effectiveOrgId) return fail("Sin organización asignada");
 
   const parsed = siteSchema.safeParse(input);
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Datos inválidos");
@@ -39,7 +42,7 @@ export async function createSite(input: SiteInput) {
   const db = await createSupabaseAdmin();
   const { data, error } = await db
     .from("sites")
-    .insert({ ...parsed.data, organization_id: user.organizationId })
+    .insert({ ...parsed.data, organization_id: effectiveOrgId })
     .select("id")
     .single();
 

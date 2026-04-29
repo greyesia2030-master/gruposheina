@@ -68,7 +68,7 @@ export default async function OperadorLayout({
             className="flex items-center gap-2.5 px-3 py-2 text-sm font-medium text-stone-700 hover:bg-stone-100 rounded-lg transition-colors"
           >
             <Warehouse className="h-4 w-4 text-stone-400" />
-            Almacén
+            Inventario
           </Link>
         </nav>
 
