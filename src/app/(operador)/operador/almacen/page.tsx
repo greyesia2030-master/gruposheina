@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/require-user";
+import Link from "next/link";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { MapPin, Truck } from "lucide-react";
 
 const ALLOWED_ROLES = ["warehouse", "admin", "superadmin"];
 
@@ -20,29 +21,33 @@ export default async function AlmacenPage() {
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card aria-disabled className="p-5 flex flex-col gap-3 opacity-75">
-          <div>
-            <p className="font-medium text-stone-900 text-sm">Sitios</p>
-            <p className="text-xs text-stone-400 mt-1">
-              Cocinas y depósitos de la organización.
-            </p>
-          </div>
-          <div>
-            <Badge variant="default">Próximamente</Badge>
-          </div>
-        </Card>
+        <Link href="/operador/almacen/sites">
+          <Card className="p-5 flex flex-col gap-3 hover:border-[#D4622B]/40 transition-colors cursor-pointer">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-stone-100">
+              <MapPin className="h-5 w-5 text-stone-500" />
+            </div>
+            <div>
+              <p className="font-medium text-stone-900 text-sm">Sitios</p>
+              <p className="text-xs text-stone-400 mt-1">
+                Cocinas y depósitos de la organización.
+              </p>
+            </div>
+          </Card>
+        </Link>
 
-        <Card aria-disabled className="p-5 flex flex-col gap-3 opacity-75">
-          <div>
-            <p className="font-medium text-stone-900 text-sm">Proveedores</p>
-            <p className="text-xs text-stone-400 mt-1">
-              Catálogo de proveedores de insumos.
-            </p>
-          </div>
-          <div>
-            <Badge variant="default">Próximamente</Badge>
-          </div>
-        </Card>
+        <Link href="/operador/almacen/proveedores">
+          <Card className="p-5 flex flex-col gap-3 hover:border-[#D4622B]/40 transition-colors cursor-pointer">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-stone-100">
+              <Truck className="h-5 w-5 text-stone-500" />
+            </div>
+            <div>
+              <p className="font-medium text-stone-900 text-sm">Proveedores</p>
+              <p className="text-xs text-stone-400 mt-1">
+                Catálogo de proveedores de insumos.
+              </p>
+            </div>
+          </Card>
+        </Link>
       </div>
     </div>
   );
