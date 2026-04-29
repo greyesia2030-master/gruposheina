@@ -64,7 +64,15 @@ export function OrderActions({ orderId, status, isWithinCutoff, stockCheck }: Or
     (a) => !a.requiresCutoff || isWithinCutoff
   );
 
-  if (actions.length === 0) return null;
+  // Custom buttons para estados logísticos y awaiting_confirmation no están en ACTIONS
+  const hasCustomButton = [
+    "confirmed",
+    "awaiting_confirmation",
+    "ready_for_delivery",
+    "out_for_delivery",
+  ].includes(status);
+
+  if (actions.length === 0 && !hasCustomButton) return null;
 
   async function executeTransition(newStatus: OrderStatus, reason?: string) {
     setLoading(newStatus);

@@ -81,6 +81,8 @@ export default async function TicketDetailPage({
   let factor = 1;
 
   if (ticket.recipe_version_id) {
+    // Dos queries separadas para evitar ambigüedad de FK
+    // (recipe_ingredients tiene inventory_item_id Y substitute_item_id → ambos FK a inventory_items)
     const [rvRes, ingRes] = await Promise.all([
       db
         .from("recipe_versions")
@@ -89,9 +91,7 @@ export default async function TicketDetailPage({
         .single(),
       db
         .from("recipe_ingredients")
-        .select(
-          "id, inventory_item_id, quantity, unit, inventory_item:inventory_items(id, name, unit, current_stock)"
-        )
+        .select("id, inventory_item_id, quantity, unit")
         .eq("recipe_version_id", ticket.recipe_version_id),
     ]);
 
@@ -99,23 +99,28 @@ export default async function TicketDetailPage({
     costPerPortion = (rvRes.data?.cost_per_portion as number) || 0;
     factor = ((ticket.quantity_target as number) || 0) / portionsYield;
 
-    ingredients = (ingRes.data ?? []).map((ing) => {
-      const item = ing.inventory_item as unknown as {
-        id: string;
-        name: string;
-        unit: string;
-        current_stock: number;
-      } | null;
-      return {
-        id: ing.id as string,
-        inventory_item_id: ing.inventory_item_id as string,
-        quantity: (ing.quantity as number) || 0,
-        unit: ing.unit as string,
-        ingredient_name: item?.name ?? "—",
-        current_stock: item?.current_stock ?? 0,
-        item_unit: item?.unit ?? "",
-      };
-    });
+    const rawIngs = ingRes.data ?? [];
+    if (rawIngs.length > 0) {
+      const itemIds = rawIngs.map((i) => i.inventory_item_id as string);
+      const { data: itemsData } = await db
+        .from("inventory_items")
+        .select("id, name, unit, current_stock")
+        .in("id", itemIds);
+      const itemMap = new Map((itemsData ?? []).map((i) => [i.id as string, i]));
+
+      ingredients = rawIngs.map((ing) => {
+        const item = itemMap.get(ing.inventory_item_id as string);
+        return {
+          id: ing.id as string,
+          inventory_item_id: ing.inventory_item_id as string,
+          quantity: (ing.quantity as number) || 0,
+          unit: ing.unit as string,
+          ingredient_name: item?.name ?? "—",
+          current_stock: (item?.current_stock as number) ?? 0,
+          item_unit: item?.unit ?? "",
+        };
+      });
+    }
   }
 
   // Consumed lots (if in_progress or ready)
@@ -332,7 +337,8 @@ export default async function TicketDetailPage({
         </div>
       )}
 
-      {/* Partial waste section (in_progress) */}
+      {/* Partial waste section — solo durante producción activa.
+          Para mermas post-producción usar el modal "Completar producción". */}
       {canComplete && (
         <div className="mb-6">
           <h2 className="text-sm font-semibold text-stone-500 uppercase tracking-wide mb-3">

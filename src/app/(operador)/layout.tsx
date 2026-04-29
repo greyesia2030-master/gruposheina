@@ -32,9 +32,12 @@ export default async function OperadorLayout({
       <RoleGuard allowed={["operator", "kitchen", "warehouse", "superadmin", "admin"]} />
       {/* Sidebar */}
       <aside className="w-56 bg-white border-r border-stone-200 flex flex-col">
-        <div className="px-5 py-5 border-b border-stone-100">
-          <p className="font-heading text-lg font-medium text-stone-900">Operaciones</p>
-          <p className="text-xs text-stone-400 mt-0.5 truncate">{currentUser.fullName ?? "—"}</p>
+        <div className="px-5 py-5 border-b border-stone-100 flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="font-heading text-lg font-medium text-stone-900">Operaciones</p>
+            <p className="text-xs text-stone-400 mt-0.5 truncate">{currentUser.fullName ?? "—"}</p>
+          </div>
+          <NotificationBell userId={currentUser.id} />
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1">
@@ -62,15 +65,12 @@ export default async function OperadorLayout({
         </nav>
 
         <div className="px-3 py-4 border-t border-stone-100">
-          <div className="flex items-center justify-between px-3 mb-2">
-            <Link
-              href="/pedidos"
-              className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
-            >
-              ← Panel completo
-            </Link>
-            <NotificationBell userId={currentUser.id} />
-          </div>
+          <Link
+            href="/pedidos"
+            className="flex items-center gap-2 px-3 py-2 text-xs text-stone-400 hover:text-stone-600 transition-colors mb-1"
+          >
+            ← Panel completo
+          </Link>
           <SignOutButton />
         </div>
       </aside>

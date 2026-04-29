@@ -44,12 +44,19 @@ const PAYMENT_LABELS: Record<PaymentStatus, string> = {
 };
 
 const TABS = [
-  { key: "all",           label: "Todos" },
-  { key: "draft",         label: "Borrador" },
-  { key: "confirmed",     label: "Confirmados" },
-  { key: "in_production", label: "En producción" },
-  { key: "delivered",     label: "Entregados" },
+  { key: "all",                label: "Todos" },
+  { key: "draft",              label: "Borrador" },
+  { key: "confirmed",          label: "Confirmados" },
+  { key: "in_production",      label: "En producción" },
+  { key: "ready_for_delivery", label: "Listos" },
+  { key: "out_for_delivery",   label: "En camino" },
+  { key: "delivered",          label: "Entregados" },
 ];
+
+// Some tabs aggregate multiple statuses
+const TAB_STATUS_FILTER: Partial<Record<string, import("@/lib/types/database").OrderStatus[]>> = {
+  draft: ["draft", "partially_filled", "awaiting_confirmation"],
+};
 
 export default async function PedidosPage({
   searchParams,
@@ -72,7 +79,12 @@ export default async function PedidosPage({
     .order("created_at", { ascending: false });
 
   if (params.status && params.status !== "all") {
-    query = query.eq("status", params.status as OrderStatus);
+    const multiFilter = TAB_STATUS_FILTER[params.status];
+    if (multiFilter) {
+      query = query.in("status", multiFilter);
+    } else {
+      query = query.eq("status", params.status as OrderStatus);
+    }
   }
   if (params.semana) {
     query = query.ilike("week_label", `%${params.semana}%`);
