@@ -11,7 +11,8 @@ import { QuickActionButton } from "./quick-action-button";
 import { ClickableRow } from "./clickable-row";
 import { NewOrderButton } from "./new-order-button";
 import type { OrderStatus, PaymentStatus } from "@/lib/types/database";
-import { MessageSquare, Globe, Phone } from "lucide-react";
+import { MessageSquare, Globe, Phone, ShoppingBag } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
 import { formatART } from "@/lib/utils/timezone";
 
 const SOURCE_ICONS: Record<string, React.ReactNode> = {
@@ -196,9 +197,11 @@ export default async function PedidosPage({
           </div>
         </Card>
       ) : (
-        <Card>
-          <p className="p-8 text-center text-text-secondary">No hay pedidos en esta categoría</p>
-        </Card>
+        <EmptyState
+          icon={ShoppingBag}
+          title="Sin pedidos en esta categoría"
+          description="Cambiá el filtro o creá un nuevo pedido."
+        />
       )}
     </div>
   );

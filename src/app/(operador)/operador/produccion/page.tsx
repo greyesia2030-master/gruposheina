@@ -4,6 +4,8 @@ import { Card } from "@/components/ui/card";
 import Link from "next/link";
 import { formatART } from "@/lib/utils/timezone";
 import type { ProductionTicketStatus } from "@/lib/types/database";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ChefHat } from "lucide-react";
 
 const DAY_NAMES: Record<string, string> = {
   "1": "Lunes",
@@ -65,11 +67,11 @@ export default async function OperadorProduccionPage() {
       </p>
 
       {sortedDates.length === 0 ? (
-        <Card>
-          <p className="p-8 text-center text-stone-400 text-sm">
-            Sin tickets de producción en este período.
-          </p>
-        </Card>
+        <EmptyState
+          icon={ChefHat}
+          title="Sin tickets de producción"
+          description="No hay tickets pendientes en los próximos 14 días."
+        />
       ) : (
         <div className="space-y-8">
           {sortedDates.map((date) => {

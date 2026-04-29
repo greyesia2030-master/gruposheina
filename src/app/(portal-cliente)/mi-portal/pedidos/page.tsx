@@ -6,6 +6,8 @@ import Link from "next/link";
 import { formatART } from "@/lib/utils/timezone";
 import type { OrderStatus } from "@/lib/types/database";
 import { NewOrderModal } from "./new-order-modal";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ShoppingBag } from "lucide-react";
 
 function cutoffShortLabel(cutoffAt: string | null): string | null {
   if (!cutoffAt) return null;
@@ -41,9 +43,12 @@ export default async function MiPortalPedidosPage() {
       </div>
 
       {!orders || orders.length === 0 ? (
-        <Card>
-          <p className="p-8 text-center text-stone-400 text-sm">Sin pedidos registrados.</p>
-        </Card>
+        <EmptyState
+          icon={ShoppingBag}
+          title="Sin pedidos registrados"
+          description="Todavía no tenés pedidos. ¿Querés crear uno?"
+          action={canCreate ? <NewOrderModal /> : undefined}
+        />
       ) : (
         <div className="space-y-2">
           {orders.map((order) => {

@@ -229,7 +229,7 @@ export default async function TicketDetailPage({
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-6">
         <Card>
           <div className="p-3 text-center">
             <p className="text-xs text-stone-400 mb-0.5">Objetivo</p>

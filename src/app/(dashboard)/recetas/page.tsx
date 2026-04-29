@@ -8,7 +8,8 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 import { CATEGORY_LABELS, CATEGORY_ORDER } from "@/lib/types/menus";
 import { CreateRecipeButton } from "./create-recipe-button";
 import type { MenuCategory } from "@/lib/types/database";
-import { Search } from "lucide-react";
+import { Search, BookOpen } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
 
 const CATEGORY_OPTIONS: { key: string; label: string }[] = [
   { key: "all", label: "Todas" },
@@ -146,13 +147,15 @@ export default async function RecetasPage({
           </div>
         </Card>
       ) : (
-        <Card>
-          <p className="p-8 text-center text-text-secondary">
-            {params.search || params.category
-              ? "No hay recetas que coincidan con el filtro."
-              : "No hay recetas creadas todavía."}
-          </p>
-        </Card>
+        <EmptyState
+          icon={BookOpen}
+          title={params.search || params.category ? "Sin resultados" : "Sin recetas"}
+          description={
+            params.search || params.category
+              ? "Ninguna receta coincide con el filtro actual."
+              : "Creá la primera receta para vincularla al menú."
+          }
+        />
       )}
     </div>
   );

@@ -196,7 +196,7 @@ export default async function MiPortalPedidoDetailPage({
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-6">
         <Card>
           <div className="p-4 text-center">
             <p className="text-xs text-stone-400 mb-1">Total viandas</p>
